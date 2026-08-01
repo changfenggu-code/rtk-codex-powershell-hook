@@ -1,17 +1,5 @@
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory)]
-    [switch]$AllowProviderRequest,
-
-    [string]$CodexHome = $(
-        if (-not [string]::IsNullOrWhiteSpace($env:CODEX_HOME)) {
-            $env:CODEX_HOME
-        }
-        else {
-            Join-Path $HOME '.codex'
-        }
-    ),
-
     [string]$RtkPath,
 
     [string]$WorkingDirectory
@@ -20,32 +8,74 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-function Get-JsonStringValue {
-    param([AllowNull()][object]$Value)
+function Invoke-CodexLoopbackCase {
+    param(
+        [Parameter(Mandatory)][string]$Name,
+        [Parameter(Mandatory)][string]$CodexPath,
+        [Parameter(Mandatory)][string[]]$CodexArguments,
+        [Parameter(Mandatory)][string]$Prompt,
+        [Parameter(Mandatory)][string]$ObserverOutput,
+        [Parameter(Mandatory)][string]$EvidenceRoot,
+        [Parameter(Mandatory)][string]$ExpectedCommand,
+        [Parameter(Mandatory)][string]$ExpectedStatus,
+        [Parameter(Mandatory)][int]$ExpectedExitCode
+    )
 
-    if ($null -eq $Value) {
-        return
+    if ([IO.File]::Exists($ObserverOutput)) {
+        [IO.File]::Delete($ObserverOutput)
     }
-    if ($Value -is [string]) {
-        $Value
-        return
+
+    $stdoutPath = Join-Path $EvidenceRoot "$Name-codex-events.jsonl"
+    $stderrPath = Join-Path $EvidenceRoot "$Name-codex-stderr.log"
+    $arguments = @($CodexArguments) + @($Prompt)
+    $stdout = @(& $CodexPath @arguments 2>$stderrPath)
+    $codexExitCode = $LASTEXITCODE
+    [IO.File]::WriteAllLines($stdoutPath, [string[]]$stdout, [Text.UTF8Encoding]::new($false))
+    if ($codexExitCode -ne 0) {
+        throw "$Name codex exec failed with exit code $codexExitCode. See $stderrPath"
     }
-    if ($Value -is [ValueType]) {
-        return
+
+    if (-not [IO.File]::Exists($ObserverOutput)) {
+        throw "$Name observer Hook did not capture a PreToolUse payload."
     }
-    if ($Value -is [Collections.IEnumerable]) {
-        foreach ($item in $Value) {
-            Get-JsonStringValue $item
+    $observed = [IO.File]::ReadAllText($ObserverOutput) | ConvertFrom-Json
+    if ($observed.tool_name -ne 'Bash' -or $observed.tool_input.command -ne 'git status --short') {
+        throw "$Name received unexpected raw tool input: $($observed.tool_input.command)"
+    }
+    [IO.File]::Copy($ObserverOutput, (Join-Path $EvidenceRoot "$Name-observed-input.json"), $true)
+
+    $events = [Collections.Generic.List[object]]::new()
+    foreach ($line in $stdout) {
+        if (-not [string]::IsNullOrWhiteSpace($line)) {
+            $events.Add(($line | ConvertFrom-Json))
         }
-        return
     }
-    foreach ($property in $Value.PSObject.Properties) {
-        Get-JsonStringValue $property.Value
+    $commandEvents = @($events | Where-Object {
+        $_.type -eq 'item.completed' -and $_.item.type -eq 'command_execution'
+    })
+    if ($commandEvents.Count -ne 1) {
+        throw "$Name expected one completed command event, got $($commandEvents.Count)."
     }
-}
+    $commandEvent = $commandEvents[0].item
+    if (-not [string]$commandEvent.command.Contains($ExpectedCommand)) {
+        throw "$Name Codex event does not contain the rewritten command: $ExpectedCommand"
+    }
+    if ($commandEvent.status -ne $ExpectedStatus -or [int]$commandEvent.exit_code -ne $ExpectedExitCode) {
+        throw "$Name command completed as status=$($commandEvent.status), exit=$($commandEvent.exit_code)."
+    }
+    $agentMessages = @($events | Where-Object {
+        $_.type -eq 'item.completed' -and $_.item.type -eq 'agent_message'
+    })
+    if ($agentMessages.Count -ne 1 -or $agentMessages[0].item.text -ne 'E2E_DONE') {
+        throw "$Name did not complete the expected loopback turn."
+    }
 
-if (-not $AllowProviderRequest) {
-    throw 'Real Codex e2e sends the prompt and normal Codex context to the configured provider. Re-run with -AllowProviderRequest only after reviewing that provider.'
+    return [pscustomobject]@{
+        Command = [string]$commandEvent.command
+        Status = [string]$commandEvent.status
+        ExitCode = [int]$commandEvent.exit_code
+        AggregatedOutput = [string]$commandEvent.aggregated_output
+    }
 }
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
@@ -57,145 +87,191 @@ if (-not [IO.Directory]::Exists($workingRoot)) {
     throw "Working directory does not exist: $workingRoot"
 }
 
-$codex = Get-Command codex.exe, codex -ErrorAction Stop | Select-Object -First 1
+$codex = Get-Command codex -ErrorAction Stop | Select-Object -First 1
+$node = Get-Command node.exe, node -ErrorAction Stop | Select-Object -First 1
 if ([string]::IsNullOrWhiteSpace($RtkPath)) {
     $rtk = Get-Command rtk.exe, rtk -ErrorAction Stop | Select-Object -First 1
     $RtkPath = $rtk.Source
 }
 $resolvedRtkPath = [IO.Path]::GetFullPath($RtkPath)
 
-$codexRoot = [IO.Path]::GetFullPath($CodexHome).TrimEnd([IO.Path]::DirectorySeparatorChar)
-$targetConfig = Join-Path $codexRoot 'hooks.json'
-$targetHook = Join-Path $codexRoot 'hooks\rtk-codex-hook.ps1'
 $runId = Get-Date -Format 'yyyyMMdd-HHmmss-fff'
-$temporaryRoot = Join-Path ([IO.Path]::GetTempPath()) "rtk-codex-real-e2e-$runId-$([Guid]::NewGuid().ToString('N'))"
+$temporaryParent = [IO.Path]::GetFullPath((Join-Path $projectRoot '.tmp'))
+$temporaryRoot = Join-Path $temporaryParent "rtk-codex-loopback-e2e-$runId-$([Guid]::NewGuid().ToString('N'))"
 $evidenceRoot = Join-Path $projectRoot "artifacts\e2e\$runId"
+[IO.Directory]::CreateDirectory($temporaryParent) | Out-Null
 [IO.Directory]::CreateDirectory($temporaryRoot) | Out-Null
 [IO.Directory]::CreateDirectory($evidenceRoot) | Out-Null
 
-$configExisted = [IO.File]::Exists($targetConfig)
-$hookExisted = [IO.File]::Exists($targetHook)
-$configHash = $null
-$hookHash = $null
-if ($configExisted) {
-    [IO.File]::Copy($targetConfig, (Join-Path $temporaryRoot 'hooks.json.original'), $false)
-    $configHash = (Get-FileHash -LiteralPath $targetConfig -Algorithm SHA256).Hash
-}
-if ($hookExisted) {
-    [IO.File]::Copy($targetHook, (Join-Path $temporaryRoot 'rtk-codex-hook.ps1.original'), $false)
-    $hookHash = (Get-FileHash -LiteralPath $targetHook -Algorithm SHA256).Hash
-}
-
-$observerOutput = Join-Path $temporaryRoot 'observed-input.json'
-$observerScript = Join-Path $temporaryRoot 'observe-pre-tool-use.ps1'
-$escapedObserverOutput = $observerOutput.Replace("'", "''")
-$observerSource = @"
-`$raw = [Console]::In.ReadToEnd()
-[IO.File]::WriteAllText('$escapedObserverOutput', `$raw, [Text.UTF8Encoding]::new(`$false))
-"@
-[IO.File]::WriteAllText($observerScript, $observerSource, [Text.UTF8Encoding]::new($false))
-
+$readyPath = Join-Path $temporaryRoot 'server-ready.json'
+$requestLog = Join-Path $evidenceRoot 'responses-requests.jsonl'
+$serverStdout = Join-Path $evidenceRoot 'mock-server-stdout.log'
+$serverStderr = Join-Path $evidenceRoot 'mock-server-stderr.log'
+$serverScript = Join-Path $projectRoot 'tests\fixtures\mock-responses-server.mjs'
+$serverProcess = $null
 $previousCodexHome = $env:CODEX_HOME
-$restored = $false
+
 try {
-    & (Join-Path $projectRoot 'install.ps1') -CodexHome $codexRoot -RtkPath $resolvedRtkPath -Confirm:$false
+    $serverProcess = Start-Process -FilePath $node.Source -ArgumentList @(
+        $serverScript,
+        $readyPath,
+        $requestLog
+    ) -WindowStyle Hidden -RedirectStandardOutput $serverStdout -RedirectStandardError $serverStderr -PassThru
 
-    $installed = [IO.File]::ReadAllText($targetConfig) | ConvertFrom-Json -AsHashtable
-    $rtkRegistration = $null
-    foreach ($entry in @($installed['hooks']['PreToolUse'])) {
-        foreach ($registration in @($entry['hooks'])) {
-            if (
-                $registration -is [Collections.IDictionary] -and
-                $registration.Contains('command') -and
-                [string]$registration['command'] -match '(?i)rtk-codex-hook\.ps1'
-            ) {
-                $rtkRegistration = $registration
-                break
-            }
+    $readyDeadline = [DateTime]::UtcNow.AddSeconds(15)
+    while (-not [IO.File]::Exists($readyPath)) {
+        if ($serverProcess.HasExited) {
+            throw "Loopback mock server exited with code $($serverProcess.ExitCode). See $serverStderr"
         }
-        if ($null -ne $rtkRegistration) {
-            break
+        if ([DateTime]::UtcNow -ge $readyDeadline) {
+            throw 'Timed out waiting for the loopback mock server.'
         }
+        Start-Sleep -Milliseconds 50
     }
-    if ($null -eq $rtkRegistration) {
-        throw 'Installed RTK Hook registration was not found.'
+    $serverInfo = [IO.File]::ReadAllText($readyPath) | ConvertFrom-Json
+    if ($serverInfo.host -ne '127.0.0.1' -or $serverInfo.baseUrl -notmatch '^http://127\.0\.0\.1:\d+/v1$') {
+        throw "Mock server did not bind exclusively to loopback: $($serverInfo.baseUrl)"
     }
 
-    $escapedObserverScript = $observerScript.Replace("'", "''")
-    $isolatedHooks = [ordered]@{
-        hooks = [ordered]@{
-            PreToolUse = @(
-                [ordered]@{
-                    matcher = '^Bash$'
-                    hooks = @(
-                        $rtkRegistration,
-                        [ordered]@{
-                            type = 'command'
-                            command = "& '$escapedObserverScript'"
-                            timeout = 5
-                            statusMessage = 'Capturing release-test input'
-                        }
-                    )
-                }
-            )
-        }
-    }
+    $configSource = @"
+model = "gpt-5.2-codex"
+model_provider = "loopback"
+
+[model_providers.loopback]
+name = "Loopback release-test provider"
+base_url = "$($serverInfo.baseUrl)"
+wire_api = "responses"
+requires_openai_auth = false
+request_max_retries = 0
+stream_max_retries = 0
+stream_idle_timeout_ms = 10000
+
+[features]
+enable_request_compression = false
+plugins = false
+remote_plugin = false
+apps = false
+memories = false
+"@
     [IO.File]::WriteAllText(
-        $targetConfig,
-        ($isolatedHooks | ConvertTo-Json -Depth 20) + [Environment]::NewLine,
+        (Join-Path $temporaryRoot 'config.toml'),
+        $configSource,
         [Text.UTF8Encoding]::new($false)
     )
 
-    $env:CODEX_HOME = $codexRoot
-    $stdoutPath = Join-Path $evidenceRoot 'codex-events.jsonl'
-    $stderrPath = Join-Path $evidenceRoot 'codex-stderr.log'
-    $prompt = 'Release integration test. Use the shell tool exactly once. Its command field must be exactly: git status --short. Do not add rtk yourself and do not run any other tool. After the tool completes, reply exactly E2E_DONE.'
-    $stdout = @(& $codex.Source exec --ephemeral --json --dangerously-bypass-hook-trust --ask-for-approval never --sandbox workspace-write --cd $workingRoot $prompt 2>$stderrPath)
-    $codexExitCode = $LASTEXITCODE
-    [IO.File]::WriteAllLines($stdoutPath, [string[]]$stdout, [Text.UTF8Encoding]::new($false))
-    if ($codexExitCode -ne 0) {
-        throw "codex exec failed with exit code $codexExitCode. See $stderrPath"
-    }
+    & (Join-Path $projectRoot 'install.ps1') -CodexHome $temporaryRoot -RtkPath $resolvedRtkPath -Confirm:$false
 
-    if (-not [IO.File]::Exists($observerOutput)) {
-        throw 'The observer Hook did not capture a PreToolUse payload.'
-    }
-    $observed = [IO.File]::ReadAllText($observerOutput) | ConvertFrom-Json
-    if ($observed.tool_name -ne 'Bash' -or $observed.tool_input.command -ne 'git status --short') {
-        throw "Unexpected raw tool input: $($observed.tool_input.command)"
-    }
+    $observerOutput = Join-Path $temporaryRoot 'observed-input.json'
+    $observerScript = Join-Path $temporaryRoot 'observe-pre-tool-use.ps1'
+    $escapedObserverOutput = $observerOutput.Replace("'", "''")
+    $observerSource = @"
+`$raw = [Console]::In.ReadToEnd()
+[IO.File]::WriteAllText('$escapedObserverOutput', `$raw, [Text.UTF8Encoding]::new(`$false))
+"@
+    [IO.File]::WriteAllText($observerScript, $observerSource, [Text.UTF8Encoding]::new($false))
 
-    $eventStrings = [Collections.Generic.List[string]]::new()
-    foreach ($line in $stdout) {
-        if ([string]::IsNullOrWhiteSpace($line)) {
-            continue
-        }
-        $eventObject = $line | ConvertFrom-Json
-        foreach ($value in @(Get-JsonStringValue $eventObject)) {
-            $eventStrings.Add($value)
-        }
+    $hooksPath = Join-Path $temporaryRoot 'hooks.json'
+    $hooksConfig = [IO.File]::ReadAllText($hooksPath) | ConvertFrom-Json -AsHashtable
+    $bashEntry = @($hooksConfig['hooks']['PreToolUse'] | Where-Object {
+        $_ -is [Collections.IDictionary] -and $_.Contains('matcher') -and [string]$_['matcher'] -eq '^Bash$'
+    }) | Select-Object -First 1
+    if ($null -eq $bashEntry) {
+        throw 'Installed Bash Hook entry was not found.'
     }
-    $combinedEvents = $eventStrings -join "`n"
+    $observerRegistration = [ordered]@{
+        type = 'command'
+        command = "& '$($observerScript.Replace("'", "''"))'"
+        timeout = 5
+        statusMessage = 'Capturing loopback release-test input'
+    }
+    $bashEntry['hooks'] = @($bashEntry['hooks']) + @($observerRegistration)
+    [IO.File]::WriteAllText(
+        $hooksPath,
+        ($hooksConfig | ConvertTo-Json -Depth 20) + [Environment]::NewLine,
+        [Text.UTF8Encoding]::new($false)
+    )
+
+    $env:CODEX_HOME = $temporaryRoot
+    $prompt = 'Local release integration test. Follow the deterministic tool call returned by the loopback provider.'
     $escapedRtkPath = $resolvedRtkPath.Replace("'", "''")
     $expectedCommand = "& '$escapedRtkPath' git status --short"
-    if (-not $combinedEvents.Contains($expectedCommand)) {
-        throw "Codex events do not contain the rewritten command: $expectedCommand"
-    }
-    if (-not $combinedEvents.Contains('E2E_DONE')) {
-        throw 'Codex did not complete the expected release-test turn.'
+    $policyResult = Invoke-CodexLoopbackCase `
+        -Name 'policy' `
+        -CodexPath $codex.Source `
+        -CodexArguments @(
+            '--ask-for-approval', 'never', 'exec', '--ephemeral', '--json',
+            '--dangerously-bypass-hook-trust', '--sandbox', 'workspace-write',
+            '--cd', $workingRoot
+        ) `
+        -Prompt $prompt `
+        -ObserverOutput $observerOutput `
+        -EvidenceRoot $evidenceRoot `
+        -ExpectedCommand $expectedCommand `
+        -ExpectedStatus 'declined' `
+        -ExpectedExitCode -1
+    if (-not $policyResult.AggregatedOutput.Contains('blocked by policy')) {
+        throw 'Policy phase did not prove that Codex evaluated the rewritten command.'
     }
 
-    [IO.File]::Copy($observerOutput, (Join-Path $evidenceRoot 'observed-input.json'), $true)
+    $executionResult = Invoke-CodexLoopbackCase `
+        -Name 'execution' `
+        -CodexPath $codex.Source `
+        -CodexArguments @(
+            'exec', '--ephemeral', '--json', '--dangerously-bypass-hook-trust',
+            '--dangerously-bypass-approvals-and-sandbox', '--cd', $workingRoot
+        ) `
+        -Prompt $prompt `
+        -ObserverOutput $observerOutput `
+        -EvidenceRoot $evidenceRoot `
+        -ExpectedCommand $expectedCommand `
+        -ExpectedStatus 'completed' `
+        -ExpectedExitCode 0
+
+    $requestRecords = @([IO.File]::ReadAllLines($requestLog) | ForEach-Object { $_ | ConvertFrom-Json })
+    $responsesRequests = @($requestRecords | Where-Object { $_.method -eq 'POST' -and $_.url -eq '/v1/responses' })
+    if ($responsesRequests.Count -ne 4) {
+        throw "Expected exactly four Responses requests, got $($responsesRequests.Count)."
+    }
+    foreach ($phase in @(
+        [pscustomobject]@{ RequestIndex = 1; CallId = 'call-loopback-1'; Name = 'policy' },
+        [pscustomobject]@{ RequestIndex = 3; CallId = 'call-loopback-2'; Name = 'execution' }
+    )) {
+        $functionOutput = @($responsesRequests[$phase.RequestIndex].body.input | Where-Object {
+            $_.type -eq 'function_call_output' -and $_.call_id -eq $phase.CallId
+        })
+        $outputJson = if ($functionOutput.Count -eq 1) {
+            $functionOutput[0].output | ConvertTo-Json -Depth 20 -Compress
+        }
+        else {
+            $null
+        }
+        if ($functionOutput.Count -ne 1 -or [string]::IsNullOrWhiteSpace($outputJson) -or $outputJson -eq 'null') {
+            throw "$($phase.Name) Responses request did not contain shell tool output."
+        }
+    }
+
     $versions = [ordered]@{
         Date = (Get-Date).ToString('o')
         Windows = [Environment]::OSVersion.VersionString
         PowerShell = $PSVersionTable.PSVersion.ToString()
         Codex = (& $codex.Source --version) -join ' '
         Rtk = (& $resolvedRtkPath --version) -join ' '
+        Provider = $serverInfo.baseUrl
+        ProviderScope = 'loopback-only'
         RawCommand = 'git status --short'
         RewrittenCommand = $expectedCommand
-        Sandbox = 'workspace-write'
-        ApprovalPolicy = 'never'
+        PolicyGate = [ordered]@{
+            Sandbox = 'workspace-write'
+            ApprovalPolicy = 'never'
+            Status = $policyResult.Status
+            BlockedAfterRewrite = $true
+        }
+        ExecutionGate = [ordered]@{
+            FixedCommandOnly = $true
+            Status = $executionResult.Status
+            ExitCode = $executionResult.ExitCode
+            FunctionOutputObserved = $true
+        }
     }
     [IO.File]::WriteAllText(
         (Join-Path $evidenceRoot 'environment.json'),
@@ -205,38 +281,22 @@ try {
 }
 finally {
     $env:CODEX_HOME = $previousCodexHome
-
-    if ($configExisted) {
-        [IO.File]::Copy((Join-Path $temporaryRoot 'hooks.json.original'), $targetConfig, $true)
+    if ($null -ne $serverProcess -and -not $serverProcess.HasExited) {
+        $serverProcess.Kill($true)
+        $serverProcess.WaitForExit(5000) | Out-Null
     }
-    elseif ([IO.File]::Exists($targetConfig)) {
-        [IO.File]::Delete($targetConfig)
-    }
-    if ($hookExisted) {
-        [IO.File]::Copy((Join-Path $temporaryRoot 'rtk-codex-hook.ps1.original'), $targetHook, $true)
-    }
-    elseif ([IO.File]::Exists($targetHook)) {
-        [IO.File]::Delete($targetHook)
-    }
-
-    $configRestored = (-not $configExisted -and -not [IO.File]::Exists($targetConfig)) -or
-        ($configExisted -and (Get-FileHash -LiteralPath $targetConfig -Algorithm SHA256).Hash -eq $configHash)
-    $hookRestored = (-not $hookExisted -and -not [IO.File]::Exists($targetHook)) -or
-        ($hookExisted -and (Get-FileHash -LiteralPath $targetHook -Algorithm SHA256).Hash -eq $hookHash)
-    $restored = $configRestored -and $hookRestored
-
     if (
         [IO.Directory]::Exists($temporaryRoot) -and
-        $temporaryRoot.StartsWith([IO.Path]::GetTempPath(), [StringComparison]::OrdinalIgnoreCase) -and
-        [IO.Path]::GetFileName($temporaryRoot).StartsWith('rtk-codex-real-e2e-', [StringComparison]::Ordinal)
+        [string]::Equals(
+            [IO.Directory]::GetParent($temporaryRoot).FullName,
+            $temporaryParent,
+            [StringComparison]::OrdinalIgnoreCase
+        ) -and
+        [IO.Path]::GetFileName($temporaryRoot).StartsWith('rtk-codex-loopback-e2e-', [StringComparison]::Ordinal)
     ) {
         [IO.Directory]::Delete($temporaryRoot, $true)
     }
 }
 
-if (-not $restored) {
-    throw 'Real Codex e2e completed, but the original Hook files were not restored exactly.'
-}
-
-Write-Host 'Real Codex e2e passed and original Hook files were restored.'
+Write-Host 'Real Codex loopback e2e passed.'
 Write-Host "  Evidence: $evidenceRoot"

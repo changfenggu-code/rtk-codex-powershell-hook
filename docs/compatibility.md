@@ -9,7 +9,7 @@ Last updated: 2026-08-02.
 | Windows | Windows 11 Home China, 10.0.26200 (build 26200) | Supported baseline |
 | PowerShell | 7.6.4 | Passed |
 | RTK | 0.44.1 | Passed |
-| Codex CLI | 0.146.0 | Protocol and local runtime baseline |
+| Codex CLI | 0.146.0 | Real loopback runtime gate passed |
 
 Versions older than the validated baseline are not claimed to work. Newer
 versions should be revalidated because Codex Hook semantics and RTK rewrite
@@ -33,33 +33,32 @@ The Windows CI and local `tests/run-all.ps1` gate cover:
 - static production-script safety checks;
 - release ZIP contents and SHA-256 checksum.
 
-Current local result: five suites, `304` assertions, zero failures.
+Current local result: all five suites pass with zero failures.
 PSScriptAnalyzer `1.25.0` and actionlint `1.7.12` also pass with zero findings.
 
 ## Real Codex Release Gate
 
-Before a release is tagged, a disposable Codex home must prove:
+Before a release is tagged, `scripts/run-real-codex-e2e.ps1` creates a
+disposable Codex home and a deterministic Responses API fixture bound only to
+`127.0.0.1`. The fixture requires no OpenAI authentication and records request
+bodies, but not headers, under the ignored `artifacts/e2e/<timestamp>` path.
+The script never reads the active Codex provider or authentication files.
 
-1. a raw `git status` tool call is executed through the installer-bound RTK;
-2. native `Get-Content` remains unchanged;
-3. mixed commands preserve local/object extents and rewrite RTK delegates;
-4. a PowerShell object pipeline starts no RTK rewrite process;
-5. a missing configured RTK path fails open;
-6. normal Codex approval and sandbox handling still occurs after mutation;
-7. the tested Codex, RTK, PowerShell, Windows versions and date are recorded.
+The gate has two phases for the same raw model command, `git status --short`:
 
-The release workflow does not replace this local product integration gate. CI
-can verify protocol and packaging deterministically, while a real Codex run
-requires a configured local Codex session.
+1. Under `workspace-write` with approvals set to `never`, the Hook rewrites to
+   the installer-bound absolute RTK path and Codex declines the resulting
+   command. This proves `updatedInput` does not bypass Codex policy.
+2. With approvals and sandbox explicitly bypassed for this fixed local command,
+   the same rewrite executes successfully and its shell output appears in the
+   next Responses request as `function_call_output`.
 
-Current model-backed gate status: **not passed yet**. A disposable-home attempt
-proved Codex `0.146.0` loaded the configured Hook path but the copied API-key
-credential returned `401` before any tool call. A second attempt using the
-active provider was not executed because that provider is a nonstandard
-external HTTP endpoint and had not been explicitly approved for sending the
-test prompt and normal Codex context. No tool-call claim is made from either
-attempt. Use `scripts/run-real-codex-e2e.ps1 -AllowProviderRequest` only after
-reviewing and approving the active provider.
+Current gate status: **passed on 2026-08-02** with Codex CLI `0.146.0`, RTK
+`0.44.1`, PowerShell `7.6.4`, and Windows `10.0.26200`. Native reads, mixed
+plans, object-pipeline preservation, missing-RTK fail-open, and the broader
+command matrix remain deterministic suite responsibilities. This gate validates
+the real Codex Hook/runtime protocol; it is not a test of any external model or
+provider.
 
 ## Known Limits
 

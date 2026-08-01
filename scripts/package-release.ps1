@@ -47,10 +47,14 @@ $requiredFiles = @(
     'README.md',
     'README.zh-CN.md',
     'CHANGELOG.md',
+    'CONTRIBUTING.md',
     'SECURITY.md',
     'LICENSE',
-    'DISCLAIMER.md'
+    'DISCLAIMER.md',
+    'PSScriptAnalyzerSettings.psd1',
+    '.gitignore'
 )
+$requiredDirectories = @('docs', 'scripts', 'tests', '.github')
 
 try {
     [IO.Directory]::CreateDirectory($packageRoot) | Out-Null
@@ -62,11 +66,13 @@ try {
         [IO.File]::Copy($source, (Join-Path $packageRoot $relativePath), $false)
     }
 
-    $sourceDocs = Join-Path $projectRoot 'docs'
-    if (-not [IO.Directory]::Exists($sourceDocs)) {
-        throw 'Required release directory is missing: docs'
+    foreach ($relativePath in $requiredDirectories) {
+        $source = Join-Path $projectRoot $relativePath
+        if (-not [IO.Directory]::Exists($source)) {
+            throw "Required release directory is missing: $relativePath"
+        }
+        Copy-Item -LiteralPath $source -Destination (Join-Path $packageRoot $relativePath) -Recurse -Force
     }
-    Copy-Item -LiteralPath $sourceDocs -Destination (Join-Path $packageRoot 'docs') -Recurse
 
     Compress-Archive -LiteralPath $packageRoot -DestinationPath $archivePath -CompressionLevel Optimal
     $hash = (Get-FileHash -LiteralPath $archivePath -Algorithm SHA256).Hash.ToLowerInvariant()

@@ -149,14 +149,18 @@ Build a release archive and checksum:
 pwsh -NoProfile -File .\scripts\package-release.ps1 -Version 0.1.0
 ```
 
-The real Codex gate intentionally requires explicit provider consent:
+Run the real Codex runtime gate against a deterministic loopback provider:
 
 ```powershell
-pwsh -NoProfile -File .\scripts\run-real-codex-e2e.ps1 -AllowProviderRequest
+pwsh -NoProfile -File .\scripts\run-real-codex-e2e.ps1
 ```
 
-That command sends its fixed test prompt and normal Codex context to the
-currently configured provider. Review the provider before granting the switch.
+The gate creates a disposable `CODEX_HOME` and starts a local Responses API
+fixture bound only to `127.0.0.1`. It neither reads the active Codex provider or
+authentication files nor sends data outside the machine. The first phase proves
+that Codex policy still blocks the rewritten command; the second phase executes
+only the fixed `git status --short` command and verifies that its output returns
+through the real Codex runtime. Node.js is required for the local fixture.
 
 ## Security Model
 

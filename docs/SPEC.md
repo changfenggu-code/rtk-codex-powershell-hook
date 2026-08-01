@@ -165,7 +165,10 @@ tests, and both language specifications together. CI and local verification use:
 pwsh -NoLogo -NoProfile -NonInteractive -File .\tests\run-all.ps1
 ```
 
-Release validation MUST additionally cover a real Codex process, a disposable
-Codex home, the installer-bound RTK path, an object pipeline with zero RTK
-calls, missing-RTK fail-open behavior, and a release ZIP whose SHA-256 matches
-its checksum file.
+Release validation MUST additionally cover a real Codex process using a
+deterministic loopback Responses fixture and a disposable Codex home. It MUST
+prove the installer-bound RTK path is applied before Codex policy, then execute
+the same fixed command in an explicit bypass phase and observe its tool output.
+The deterministic suites MUST cover object pipelines with zero RTK calls and
+missing-RTK fail-open behavior. The release ZIP SHA-256 MUST match its checksum
+file.

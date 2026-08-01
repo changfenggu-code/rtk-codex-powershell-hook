@@ -25,6 +25,7 @@ $required = @(
     'docs\SPEC.md', 'docs\SPEC.zh-CN.md',
     'docs\compatibility.md', 'docs\compatibility.zh-CN.md',
     'docs\upstream-roadmap.md', 'docs\upstream-roadmap.zh-CN.md',
+    'scripts\run-real-codex-e2e.ps1', 'tests\fixtures\mock-responses-server.mjs',
     '.github\workflows\ci.yml', '.github\workflows\release.yml'
 )
 foreach ($relativePath in $required) {
@@ -32,8 +33,12 @@ foreach ($relativePath in $required) {
 }
 
 $strictUtf8 = [Text.UTF8Encoding]::new($false, $true)
-$textFiles = @(Get-ChildItem -LiteralPath $projectRoot -Recurse -File -Force | Where-Object {
-    $_.Extension -in @('.md', '.ps1', '.cmd', '.json', '.yml', '.yaml', '.psd1') -or $_.Name -eq 'LICENSE'
+$sourceFiles = @(Get-ChildItem -LiteralPath $projectRoot -Recurse -File -Force | Where-Object {
+    $relativePath = $_.FullName.Substring($projectRoot.Length + 1)
+    $relativePath -notmatch '^(?:artifacts|\.tmp|\.git)[\\/]'
+})
+$textFiles = @($sourceFiles | Where-Object {
+    $_.Extension -in @('.md', '.ps1', '.cmd', '.json', '.yml', '.yaml', '.psd1', '.mjs') -or $_.Name -eq 'LICENSE'
 })
 foreach ($file in $textFiles) {
     $validUtf8 = $true
@@ -46,7 +51,7 @@ foreach ($file in $textFiles) {
     Assert-True "UTF-8: $($file.FullName.Substring($projectRoot.Length + 1))" $validUtf8
 }
 
-$markdownFiles = @(Get-ChildItem -LiteralPath $projectRoot -Recurse -Filter '*.md' -File -Force)
+$markdownFiles = @($sourceFiles | Where-Object { $_.Extension -eq '.md' })
 foreach ($file in $markdownFiles) {
     $source = [IO.File]::ReadAllText($file.FullName)
     foreach ($match in [regex]::Matches($source, '\[[^\]]+\]\(([^)]+)\)')) {

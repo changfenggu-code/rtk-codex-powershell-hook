@@ -54,7 +54,11 @@ try {
             'rtk-codex-powershell-hook-0.1.0/README.zh-CN.md',
             'rtk-codex-powershell-hook-0.1.0/LICENSE',
             'rtk-codex-powershell-hook-0.1.0/docs/SPEC.md',
-            'rtk-codex-powershell-hook-0.1.0/docs/SPEC.zh-CN.md'
+            'rtk-codex-powershell-hook-0.1.0/docs/SPEC.zh-CN.md',
+            'rtk-codex-powershell-hook-0.1.0/PSScriptAnalyzerSettings.psd1',
+            'rtk-codex-powershell-hook-0.1.0/scripts/run-real-codex-e2e.ps1',
+            'rtk-codex-powershell-hook-0.1.0/tests/fixtures/mock-responses-server.mjs',
+            'rtk-codex-powershell-hook-0.1.0/.github/workflows/ci.yml'
         )) {
             Assert-True "ZIP contains $required" ($required -in $entryNames)
         }

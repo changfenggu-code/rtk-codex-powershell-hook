@@ -138,14 +138,17 @@ pwsh -NoLogo -NoProfile -NonInteractive -File .\scripts\run-actionlint.ps1 -Boot
 pwsh -NoProfile -File .\scripts\package-release.ps1 -Version 0.1.0
 ```
 
-真实 Codex 门禁必须显式同意 provider 请求：
+用确定性的本机回环 provider 运行真实 Codex 运行时门禁：
 
 ```powershell
-pwsh -NoProfile -File .\scripts\run-real-codex-e2e.ps1 -AllowProviderRequest
+pwsh -NoProfile -File .\scripts\run-real-codex-e2e.ps1
 ```
 
-这条命令会把固定测试 prompt 和 Codex 正常上下文发送给当前配置的 provider；
-传入开关前必须先审查 provider。
+这条命令创建一次性 `CODEX_HOME`，并启动只监听 `127.0.0.1` 的本地 Responses
+API 固件。它不会读取当前 Codex provider 或认证文件，也不会把数据发送到本机
+之外。第一阶段证明改写后的命令仍会被 Codex 策略拦截；第二阶段只执行固定的
+`git status --short`，并验证输出确实经由真实 Codex 运行时返回。运行该门禁需要
+Node.js。
 
 测试覆盖 AST 规则、Codex JSON 协议、RTK 调用次数、真实生成命令、带空格和
 单引号的路径、RTK 缺失时 fail-open、安装/升级/卸载、静态安全审计与发布包内容。

@@ -11,19 +11,17 @@
 - [ ] `tests/run-all.ps1` passes on the release commit.
 - [ ] PSScriptAnalyzer `1.25.0` passes with the checked-in settings.
 - [ ] actionlint `1.7.12` validates both GitHub Actions workflows.
+- [ ] Native reads, mixed plans, object pipelines, and missing-RTK fail-open cases pass in the deterministic suites.
 - [ ] CI passes on `windows-latest` with pinned RTK version and checksum.
 - [ ] `scripts/package-release.ps1` produces the expected ZIP and matching SHA-256.
 
 ## Real Codex Gate
 
-- [ ] Review the active model provider, then run `scripts/run-real-codex-e2e.ps1 -AllowProviderRequest`.
-- [ ] Confirm the selected Codex home's original Hook files are hash-restored after the run.
-- [ ] Raw `git status` executes through that exact path.
-- [ ] `Get-Content` remains native.
-- [ ] Mixed Preserve/HookRewrite/Delegate behavior is observed.
-- [ ] Object pipeline causes zero RTK rewrite calls.
-- [ ] Missing bound RTK fails open.
-- [ ] Approval/sandbox behavior still applies after rewrite.
+- [ ] Run `scripts/run-real-codex-e2e.ps1` with Node.js available.
+- [ ] Confirm the fixture bound only to `127.0.0.1` and the disposable Codex home was removed.
+- [ ] Confirm the raw `git status --short` became the exact installer-bound RTK command.
+- [ ] Confirm the policy phase declined the rewritten command under `workspace-write`/`never`.
+- [ ] Confirm the fixed-command execution phase completed and returned `function_call_output`.
 - [ ] Record Windows, PowerShell, RTK, Codex versions and date in compatibility docs.
 
 ## Remote Actions

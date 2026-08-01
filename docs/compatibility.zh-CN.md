@@ -9,7 +9,7 @@
 | Windows | Windows 11 家庭中文版，10.0.26200（build 26200） | 支持基线 |
 | PowerShell | 7.6.4 | 通过 |
 | RTK | 0.44.1 | 通过 |
-| Codex CLI | 0.146.0 | 协议和本地运行时基线 |
+| Codex CLI | 0.146.0 | 真实回环运行时门禁通过 |
 
 不声明更早版本可用。Codex Hook 语义和 RTK rewrite 覆盖会分别演进，新版本也应
 重新跑发布门禁。
@@ -30,30 +30,27 @@ Windows CI 与本地 `tests/run-all.ps1` 共同覆盖：
 - 生产脚本静态安全审计；
 - 发布 ZIP 内容和 SHA-256。
 
-当前本地结果：五套测试、`304` 个断言、零失败；PSScriptAnalyzer `1.25.0`
-和 actionlint `1.7.12` 也都是零告警通过。
+当前本地结果：五套测试全部零失败通过；PSScriptAnalyzer `1.25.0` 和
+actionlint `1.7.12` 也都是零告警通过。
 
 ## 真实 Codex 发布门禁
 
-打 tag 前必须用隔离 Codex home 证明：
+打 tag 前运行 `scripts/run-real-codex-e2e.ps1`。它创建一次性 Codex home 和只
+监听 `127.0.0.1` 的确定性 Responses API 固件，不需要 OpenAI 认证；固件只把
+请求正文记录在被 Git 忽略的 `artifacts/e2e/<timestamp>`，不记录请求头。脚本
+不会读取当前 Codex provider 或认证文件。
 
-1. 原始 `git status` 通过安装器绑定的 RTK 执行；
-2. 原生 `Get-Content` 不被改写；
-3. 混合命令只改 RTK Delegate，Preserve/本地范围正确保留；
-4. PowerShell 对象管道不启动 RTK rewrite；
-5. 配置的 RTK 路径缺失时 fail-open；
-6. 改写后仍然经过 Codex 正常审批和 sandbox；
-7. 记录 Codex、RTK、PowerShell、Windows 版本和日期。
+门禁对同一条原始模型命令 `git status --short` 执行两个阶段：
 
-发布工作流不能代替这项本地集成门禁。CI 能确定性验证协议和打包，真实 Codex
-运行需要本地已配置会话。
+1. 在 `workspace-write` 且审批策略为 `never` 时，Hook 改写到安装器绑定的 RTK
+   绝对路径，随后 Codex 拒绝执行，证明 `updatedInput` 不会绕过 Codex 策略；
+2. 仅针对这条固定本地命令显式关闭审批和 sandbox 后，同一改写成功执行，shell
+   输出作为 `function_call_output` 出现在下一次 Responses 请求中。
 
-当前模型支持的真实门禁状态：**尚未通过**。第一次隔离 home 尝试证明 Codex
-`0.146.0` 识别了 Hook 配置，但复制的 API-key 凭据在任何工具调用前返回 `401`；
-第二次原本准备使用当前有效 provider，但该 provider 是非标准外部 HTTP 地址，
-在没有明确同意把测试 prompt 和 Codex 正常上下文发送过去之前没有执行。本文不
-用这两次尝试冒充工具调用成功。审查并同意当前 provider 后，才运行
-`scripts/run-real-codex-e2e.ps1 -AllowProviderRequest`。
+当前门禁状态：**已于 2026-08-02 通过**。环境为 Codex CLI `0.146.0`、RTK
+`0.44.1`、PowerShell `7.6.4`、Windows `10.0.26200`。原生读取、混合计划、
+对象管道 Preserve、RTK 缺失 fail-open 和更广命令矩阵仍由确定性测试套件负责。
+这项门禁验证真实 Codex Hook/运行时协议，不验证任何外部模型或 provider 的质量。
 
 ## 已知限制
 

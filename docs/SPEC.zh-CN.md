@@ -385,7 +385,9 @@ pwsh -NoLogo -NoProfile -NonInteractive -File .\tests\run-all.ps1
   `rtk rg --pcre2`、`rtk find` 和 `rtk ls`；
 - 使用当前 Codex 版本生成的 `pre-tool-use.command.output.schema.json` 校验真实响应。
 - 使用安装器绑定的、含空格与单引号的 RTK 路径完成子进程协议测试；
-- 验证发布 ZIP 内容和 SHA-256，并在发版前完成真实 Codex 端到端门禁。
+- 验证发布 ZIP 内容和 SHA-256，并在发版前通过本机回环 Responses 固件和一次性
+  Codex home 完成真实 Codex 端到端门禁；门禁必须同时证明改写后仍受 Codex
+  策略约束，以及固定命令在显式 bypass 阶段的真实执行结果会返回模型协议。
 
 断言数量不是稳定接口；新增规则时，正向案例和对应的拒绝案例必须成对增加。
 

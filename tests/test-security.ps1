@@ -77,14 +77,21 @@ foreach ($entry in @($hooksConfig['hooks']['PreToolUse'])) {
 }
 Assert-True 'hooks.json contains exactly one packaged registration' ($registrationCount -eq 1)
 
-$realE2eGuarded = $false
-try {
-    & (Join-Path $projectRoot 'scripts\run-real-codex-e2e.ps1') -AllowProviderRequest:$false
-}
-catch {
-    $realE2eGuarded = $_.Exception.Message.Contains('configured provider')
-}
-Assert-True 'Real Codex e2e requires explicit provider consent' $realE2eGuarded
+$realE2ePath = Join-Path $projectRoot 'scripts\run-real-codex-e2e.ps1'
+$realE2eSource = [IO.File]::ReadAllText($realE2ePath)
+Assert-True 'Real Codex e2e uses a disposable Codex home' ($realE2eSource -match '\$env:CODEX_HOME = \$temporaryRoot')
+Assert-True 'Real Codex e2e disables provider authentication' ($realE2eSource -match 'requires_openai_auth = false')
+Assert-True 'Real Codex e2e requires loopback-only provider binding' ($realE2eSource -match "host -ne '127\.0\.0\.1'")
+Assert-True 'Real Codex e2e does not read auth files' ($realE2eSource -notmatch '(?i)auth\.json')
+Assert-True 'Real Codex e2e has no external-provider consent switch' ($realE2eSource -notmatch 'ProviderRequest')
+
+$fixturePath = Join-Path $projectRoot 'tests\fixtures\mock-responses-server.mjs'
+$fixtureSource = [IO.File]::ReadAllText($fixturePath)
+Assert-True 'Loopback fixture binds an ephemeral local port' ($fixtureSource -match 'server\.listen\(0, "127\.0\.0\.1"')
+Assert-True 'Loopback fixture records no request headers' ($fixtureSource -notmatch 'request\.headers')
+$node = Get-Command node -ErrorAction Stop | Select-Object -First 1
+& $node.Source --check $fixturePath
+Assert-True 'Loopback fixture passes node syntax validation' ($LASTEXITCODE -eq 0)
 
 Write-Host "Passed: $script:Passed"
 Write-Host "Failed: $script:Failed"
