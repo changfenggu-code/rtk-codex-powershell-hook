@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "^Bash$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "& (Join-Path $HOME '.codex\\hooks\\rtk-codex-hook.ps1')",
+            "timeout": 5,
+            "statusMessage": "Rewriting shell command with RTK"
+          }
+        ]
+      }
+    ]
+  }
+}

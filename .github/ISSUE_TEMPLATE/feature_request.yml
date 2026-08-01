@@ -1,0 +1,32 @@
+name: Feature request
+description: Propose a PowerShell compatibility rule or project-level capability.
+title: "[Feature]: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: Describe the concrete Codex/PowerShell behavior that is missing.
+    validations:
+      required: true
+  - type: textarea
+    id: semantics
+    attributes:
+      label: Required semantic equivalence
+      description: Explain input/output shape, object-pipeline behavior, and rejection cases.
+    validations:
+      required: true
+  - type: textarea
+    id: upstream
+    attributes:
+      label: Why this belongs here rather than RTK or Codex upstream
+    validations:
+      required: true
+  - type: textarea
+    id: examples
+    attributes:
+      label: Positive and preserve examples
+      render: powershell
+    validations:
+      required: true

@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  RTK_VERSION: 0.44.1
+  RTK_WINDOWS_SHA256: e9f2e26c377279c34604d81021347f8a0f16eb539ab54dd17567ab5805b2957d
+
+jobs:
+  windows:
+    name: Windows / PowerShell 7 / RTK
+    runs-on: windows-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install pinned RTK release
+        shell: pwsh
+        run: |
+          $archive = Join-Path $env:RUNNER_TEMP 'rtk-windows.zip'
+          $destination = Join-Path $env:RUNNER_TEMP 'rtk-bin'
+          $uri = "https://github.com/rtk-ai/rtk/releases/download/v$env:RTK_VERSION/rtk-x86_64-pc-windows-msvc.zip"
+          Invoke-WebRequest -Uri $uri -OutFile $archive
+          $actual = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne $env:RTK_WINDOWS_SHA256) {
+            throw "RTK archive checksum mismatch: $actual"
+          }
+          Expand-Archive -LiteralPath $archive -DestinationPath $destination
+          $rtk = Get-ChildItem -LiteralPath $destination -Recurse -Filter rtk.exe -File | Select-Object -First 1
+          if ($null -eq $rtk) {
+            throw 'rtk.exe was not found in the release archive.'
+          }
+          $rtk.DirectoryName | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Verify toolchain
+        shell: pwsh
+        run: |
+          pwsh --version
+          rtk --version
+          rtk rewrite --help | Select-Object -First 1
+
+      - name: Run PSScriptAnalyzer
+        shell: pwsh
+        run: pwsh -NoLogo -NoProfile -NonInteractive -File .\scripts\run-lint.ps1 -Bootstrap
+
+      - name: Validate GitHub Actions workflows
+        shell: pwsh
+        run: pwsh -NoLogo -NoProfile -NonInteractive -File .\scripts\run-actionlint.ps1 -Bootstrap
+
+      - name: Run complete test suite
+        shell: pwsh
+        run: pwsh -NoLogo -NoProfile -NonInteractive -File .\tests\run-all.ps1
+
+      - name: Build CI release package
+        shell: pwsh
+        run: pwsh -NoLogo -NoProfile -NonInteractive -File .\scripts\package-release.ps1 -Version 0.0.0-ci -OutputDirectory .\artifacts
+
+      - name: Upload release-package smoke artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rtk-codex-powershell-hook-ci
+          path: artifacts/*
+          if-no-files-found: error
+          retention-days: 7

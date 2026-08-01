@@ -1,0 +1,57 @@
+name: Bug report
+description: Report an incorrect rewrite, installation problem, or compatibility regression.
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Do not include secrets, auth files, or private command arguments.
+  - type: input
+    id: codex-version
+    attributes:
+      label: Codex version
+      placeholder: codex-cli 0.146.0
+    validations:
+      required: true
+  - type: input
+    id: rtk-version
+    attributes:
+      label: RTK version
+      placeholder: rtk 0.44.1
+    validations:
+      required: true
+  - type: input
+    id: powershell-version
+    attributes:
+      label: PowerShell and Windows version
+    validations:
+      required: true
+  - type: textarea
+    id: command
+    attributes:
+      label: Minimal sanitized command
+      description: Remove private paths, tokens, and arguments.
+      render: powershell
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior and logs
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I ran `tests/run-all.ps1` or explained why I could not.
+          required: true
+        - label: I removed secrets and private source from this report.
+          required: true
