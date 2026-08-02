@@ -4,7 +4,7 @@ A deterministic Windows/PowerShell adapter that rewrites Codex `Bash` tool
 commands through [RTK](https://github.com/rtk-ai/rtk) before execution.
 
 Codex now supports transparent `PreToolUse` rewrites through
-`permissionDecision: "allow"` plus `updatedInput`. RTK 0.44.1 exposes the
+`permissionDecision: "allow"` plus `updatedInput`. RTK 0.44.2 exposes the
 rewrite registry through `rtk rewrite`, but its documented Codex integration is
 still instruction based. This project connects those two surfaces without a
 model retry and adds conservative PowerShell AST handling.
@@ -13,7 +13,8 @@ This is an independent community project. It is not affiliated with or
 endorsed by OpenAI or the RTK maintainers.
 
 [中文说明](README.zh-CN.md) | [Specification](docs/SPEC.md) |
-[Compatibility](docs/compatibility.md) | [Upstream roadmap](docs/upstream-roadmap.md)
+[Compatibility](docs/compatibility.md) | [Read evaluation](docs/read-evaluation.md) |
+[Upstream roadmap](docs/upstream-roadmap.md)
 
 ## Scope
 
@@ -29,7 +30,7 @@ hook upstream rather than in this PowerShell compatibility layer.
 
 - Windows
 - PowerShell 7 (`pwsh.exe`)
-- RTK with `rtk rewrite` support; RTK `0.44.1` is the validated baseline
+- RTK with `rtk rewrite` support; RTK `0.44.2` is the validated baseline
 - Codex with `PreToolUse.updatedInput` support; Codex CLI `0.146.0` is the
   validated baseline
 
@@ -57,6 +58,11 @@ The installer validates `rtk --version` and `rtk rewrite --help`, copies the
 Hook atomically, and structurally merges one registration into
 `~/.codex/hooks.json`. It preserves unrelated hooks and creates timestamped
 backups under `~/.codex/backups/rtk-codex-hook/`.
+
+The installer does not edit `%APPDATA%\rtk\config.toml` or any other RTK
+configuration. An optional RTK `exclude_commands = ["cat", "head", "tail"]`
+setting can protect other integrations, but this Hook enforces its read boundary
+independently.
 
 Restart Codex after installation. A raw `git status` tool call should be
 rewritten to the exact RTK path selected during installation.
@@ -117,6 +123,10 @@ Get-Content -Raw Cargo.toml
 Generated `rtk read` candidates are rejected per slot. Explicit user-authored
 `rtk read` commands remain available.
 
+The planner is deterministic and stateless. It does not persist command text,
+rewrite outcomes, or object-pipeline classifications, and it does not learn
+future rewrites from speculative RTK results.
+
 ## Multiple Rewriting Hooks
 
 Current Codex chooses the `updatedInput` from the Hook that completes last when
@@ -141,7 +151,18 @@ pwsh -NoLogo -NoProfile -NonInteractive -File .\scripts\run-actionlint.ps1 -Boot
 
 The suites cover AST rules, Codex JSON protocol, RTK invocation counts,
 generated-command smoke tests, path quoting, missing-RTK fail-open behavior,
-safe install/upgrade/uninstall, static safety checks, and release packaging.
+safe install/upgrade/uninstall, the isolated `rtk read` evaluator, static safety
+checks, and release packaging.
+
+Reproduce the read-policy measurements without modifying the user RTK tracking
+database or configuration:
+
+```powershell
+pwsh -NoProfile -File .\scripts\evaluate-read.ps1 -File .\rtk-codex-hook.ps1
+```
+
+See [the read evaluation report](docs/read-evaluation.md) for the RTK 0.44.2
+results and interpretation.
 
 Build a release archive and checksum:
 

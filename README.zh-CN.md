@@ -4,14 +4,15 @@
 工具命令前，通过 [RTK](https://github.com/rtk-ai/rtk) 对命令进行透明改写。
 
 Codex 现在已经支持 `PreToolUse` 返回 `permissionDecision: "allow"` 和
-`updatedInput`，RTK 0.44.1 也已经通过 `rtk rewrite` 暴露统一改写注册表；但 RTK
+`updatedInput`，RTK 0.44.2 也已经通过 `rtk rewrite` 暴露统一改写注册表；但 RTK
 文档中的 Codex 接入目前仍以 `AGENTS.md + RTK.md` 指令约束为主。本项目把两端
 连接起来，不让模型重试，也不依赖模型记住“主动加 rtk 前缀”。
 
 这是独立的社区项目，与 OpenAI 或 RTK 维护团队不存在隶属或背书关系。
 
 [English](README.md) | [中文规范](docs/SPEC.zh-CN.md) |
-[兼容性](docs/compatibility.zh-CN.md) | [上游改进手册](docs/upstream-roadmap.zh-CN.md)
+[兼容性](docs/compatibility.zh-CN.md) | [读取评估](docs/read-evaluation.zh-CN.md) |
+[上游改进手册](docs/upstream-roadmap.zh-CN.md)
 
 ## 项目边界
 
@@ -27,7 +28,7 @@ Hook，而不是继续扩大这个 PowerShell 兼容层。
 
 - Windows
 - PowerShell 7（`pwsh.exe`）
-- 支持 `rtk rewrite` 的 RTK；已验证基线为 `0.44.1`
+- 支持 `rtk rewrite` 的 RTK；已验证基线为 `0.44.2`
 - 支持 `PreToolUse.updatedInput` 的 Codex；已验证基线为 Codex CLI `0.146.0`
 
 ## 安装
@@ -54,6 +55,10 @@ Hook，而不是继续扩大这个 PowerShell 兼容层。
 使用结构化 JSON API 向 `~/.codex/hooks.json` 合并且只合并一个注册项。其他
 Hook 不会被删除或换序；已有文件会备份到
 `~/.codex/backups/rtk-codex-hook/<timestamp>/`。
+
+安装器不会修改 `%APPDATA%\rtk\config.toml` 或其他 RTK 配置。RTK 中可选的
+`exclude_commands = ["cat", "head", "tail"]` 可以保护其他集成，但本 Hook
+自身不依赖它，读取边界由 AST Planner 和返回结果校验独立保证。
 
 安装完成后重启 Codex。此后模型发出的原始 `git status` 应该被改写为安装时
 绑定的那个 RTK 绝对路径，而不是运行时重新从 `PATH` 猜测。
@@ -111,6 +116,9 @@ Get-Content -Raw Cargo.toml
 
 RTK 自动生成的 `rtk read` 会按槽位拒绝；用户明确写出的 `rtk read` 保留。
 
+Planner 是确定且无状态的：它不持久化命令文本、rewrite 结果或对象管道分类，
+也不会根据一次推测性的 RTK 返回结果“学习”未来改写。
+
 ## 多个改写 Hook 的风险
 
 当前 Codex 在多个匹配的 `PreToolUse` Hook 都返回 `updatedInput` 时，会选择
@@ -152,6 +160,15 @@ Node.js。
 
 测试覆盖 AST 规则、Codex JSON 协议、RTK 调用次数、真实生成命令、带空格和
 单引号的路径、RTK 缺失时 fail-open、安装/升级/卸载、静态安全审计与发布包内容。
+
+可以用下面的命令复现读取策略测试；脚本使用一次性 RTK tracking 数据库，不会
+改动用户的 RTK 配置或统计数据库：
+
+```powershell
+pwsh -NoProfile -File .\scripts\evaluate-read.ps1 -File .\rtk-codex-hook.ps1
+```
+
+RTK 0.44.2 的实测数据与解释见[读取评估报告](docs/read-evaluation.zh-CN.md)。
 
 ## 安全模型
 

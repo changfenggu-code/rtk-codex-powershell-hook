@@ -17,7 +17,7 @@ body:
     id: rtk-version
     attributes:
       label: RTK version
-      placeholder: rtk 0.44.1
+      placeholder: rtk 0.44.2
     validations:
       required: true
   - type: input

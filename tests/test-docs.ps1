@@ -25,6 +25,8 @@ $required = @(
     'docs\SPEC.md', 'docs\SPEC.zh-CN.md',
     'docs\compatibility.md', 'docs\compatibility.zh-CN.md',
     'docs\upstream-roadmap.md', 'docs\upstream-roadmap.zh-CN.md',
+    'docs\read-evaluation.md', 'docs\read-evaluation.zh-CN.md',
+    'scripts\evaluate-read.ps1',
     'scripts\run-real-codex-e2e.ps1', 'tests\fixtures\mock-responses-server.mjs',
     '.github\workflows\ci.yml', '.github\workflows\release.yml'
 )

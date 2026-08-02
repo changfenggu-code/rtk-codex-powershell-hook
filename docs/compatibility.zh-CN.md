@@ -8,7 +8,7 @@
 | --- | --- | --- |
 | Windows | Windows 11 家庭中文版，10.0.26200（build 26200） | 支持基线 |
 | PowerShell | 7.6.4 | 通过 |
-| RTK | 0.44.1 | 通过 |
+| RTK | 0.44.2 | 通过 |
 | Codex CLI | 0.146.0 | 真实回环运行时门禁通过 |
 
 不声明更早版本可用。Codex Hook 语义和 RTK rewrite 覆盖会分别演进，新版本也应
@@ -29,9 +29,14 @@ Windows CI 与本地 `tests/run-all.ps1` 共同覆盖：
 - 安装、升级、冲突告警、备份、卸载、`-WhatIf` 和幂等；
 - 生产脚本静态安全审计；
 - 发布 ZIP 内容和 SHA-256。
+- 隔离、只读的 `rtk read` 评估与结构化报告输出。
 
-当前本地结果：五套测试全部零失败通过；PSScriptAnalyzer `1.25.0` 和
+当前本地结果：六套测试共 354 条断言，全部零失败通过；PSScriptAnalyzer `1.25.0` 和
 actionlint `1.7.12` 也都是零告警通过。
+
+[读取评估](read-evaluation.zh-CN.md)记录了 RTK 0.44.2 样本的输入哈希和测试
+方法。默认 read 逐字相同但不节省估算 token；有损模式继续作为显式工具，而非
+自动改写。
 
 ## 真实 Codex 发布门禁
 
@@ -48,7 +53,7 @@ actionlint `1.7.12` 也都是零告警通过。
    输出作为 `function_call_output` 出现在下一次 Responses 请求中。
 
 当前门禁状态：**已于 2026-08-02 通过**。环境为 Codex CLI `0.146.0`、RTK
-`0.44.1`、PowerShell `7.6.4`、Windows `10.0.26200`。原生读取、混合计划、
+`0.44.2`、PowerShell `7.6.4`、Windows `10.0.26200`。原生读取、混合计划、
 对象管道 Preserve、RTK 缺失 fail-open 和更广命令矩阵仍由确定性测试套件负责。
 这项门禁验证真实 Codex Hook/运行时协议，不验证任何外部模型或 provider 的质量。
 
@@ -68,4 +73,4 @@ actionlint `1.7.12` 也都是零告警通过。
 - [Codex Hooks 官方文档](https://developers.openai.com/codex/hooks)
 - [固定提交中的 Codex completion-order 实现](https://github.com/openai/codex/blob/e4836f998da166aba456f60d2e74eb79d6e2542b/codex-rs/hooks/src/events/pre_tool_use.rs#L121-L156)
 - [RTK 仓库和 Windows 安装说明](https://github.com/rtk-ai/rtk)
-- [RTK v0.44.1 Release](https://github.com/rtk-ai/rtk/releases/tag/v0.44.1)
+- [RTK v0.44.2 Release](https://github.com/rtk-ai/rtk/releases/tag/v0.44.2)

@@ -4,7 +4,7 @@ Issues and pull requests are welcome after the repository is published.
 
 ## Development
 
-Requirements are Windows, PowerShell 7, and RTK `0.44.1` or a compatible
+Requirements are Windows, PowerShell 7, and RTK `0.44.2` or a compatible
 version exposing `rtk rewrite`.
 
 Run the complete verification suite before submitting a change:

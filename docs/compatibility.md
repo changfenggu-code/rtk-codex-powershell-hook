@@ -8,7 +8,7 @@ Last updated: 2026-08-02.
 | --- | --- | --- |
 | Windows | Windows 11 Home China, 10.0.26200 (build 26200) | Supported baseline |
 | PowerShell | 7.6.4 | Passed |
-| RTK | 0.44.1 | Passed |
+| RTK | 0.44.2 | Passed |
 | Codex CLI | 0.146.0 | Real loopback runtime gate passed |
 
 Versions older than the validated baseline are not claimed to work. Newer
@@ -32,9 +32,14 @@ The Windows CI and local `tests/run-all.ps1` gate cover:
   idempotency;
 - static production-script safety checks;
 - release ZIP contents and SHA-256 checksum.
+- isolated, read-only `rtk read` evaluation and structured report output.
 
-Current local result: all five suites pass with zero failures.
+Current local result: all six suites pass with 354 assertions and zero failures.
 PSScriptAnalyzer `1.25.0` and actionlint `1.7.12` also pass with zero findings.
+
+The [read evaluation](read-evaluation.md) records an RTK 0.44.2 sample with its
+input hash and methodology. Default read was exact but saved no estimated
+tokens; lossy modes remain explicit tools rather than automatic rewrites.
 
 ## Real Codex Release Gate
 
@@ -54,7 +59,7 @@ The gate has two phases for the same raw model command, `git status --short`:
    next Responses request as `function_call_output`.
 
 Current gate status: **passed on 2026-08-02** with Codex CLI `0.146.0`, RTK
-`0.44.1`, PowerShell `7.6.4`, and Windows `10.0.26200`. Native reads, mixed
+`0.44.2`, PowerShell `7.6.4`, and Windows `10.0.26200`. Native reads, mixed
 plans, object-pipeline preservation, missing-RTK fail-open, and the broader
 command matrix remain deterministic suite responsibilities. This gate validates
 the real Codex Hook/runtime protocol; it is not a test of any external model or
@@ -79,4 +84,4 @@ provider.
 - [Codex Hooks documentation](https://developers.openai.com/codex/hooks)
 - [Pinned Codex `PreToolUse` completion-order implementation](https://github.com/openai/codex/blob/e4836f998da166aba456f60d2e74eb79d6e2542b/codex-rs/hooks/src/events/pre_tool_use.rs#L121-L156)
 - [RTK repository and Windows installation](https://github.com/rtk-ai/rtk)
-- [RTK v0.44.1 release](https://github.com/rtk-ai/rtk/releases/tag/v0.44.1)
+- [RTK v0.44.2 release](https://github.com/rtk-ai/rtk/releases/tag/v0.44.2)

@@ -54,6 +54,11 @@ subexpressions, background pipelines, runtime variables, unsupported
 parameters, non-filesystem providers, and commands affected by function, alias,
 or module-resolution mutation.
 
+The planner MUST be stateless across Hook invocations. It MUST NOT persist input
+commands, RTK results, normalized command shapes, or learned classifications.
+New coverage requires an explicit source-controlled rule and corresponding
+positive and rejection tests.
+
 ## 5. Local Mappings
 
 Local rewrites MAY cover only statically proven forms of:
@@ -142,6 +147,10 @@ The installer and uninstaller MUST:
 - make `-WhatIf` non-writing;
 - avoid recursive deletion of the Codex home or backup tree.
 
+They MUST NOT modify RTK configuration, including
+`%APPDATA%\rtk\config.toml`. An RTK `exclude_commands` setting MAY protect other
+integrations but MUST NOT be required for this Hook's read-boundary correctness.
+
 The installer SHOULD warn when another `PreToolUse` command Hook may match
 `Bash`, because current Codex resolves competing `updatedInput` values by
 completion order. It MUST NOT delete or reorder that Hook.
@@ -172,3 +181,9 @@ the same fixed command in an explicit bypass phase and observe its tool output.
 The deterministic suites MUST cover object pipelines with zero RTK calls and
 missing-RTK fail-open behavior. The release ZIP SHA-256 MUST match its checksum
 file.
+
+The repository MUST include a reproducible read evaluator that isolates RTK
+tracking from the user's database, does not modify RTK configuration, does not
+modify the input file, emits structured output, and compares default, minimal,
+aggressive, line-window, tail-window, and line-number modes. Timing results MUST
+be documented as machine-specific and MUST NOT be enforced as CI thresholds.

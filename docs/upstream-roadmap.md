@@ -94,6 +94,51 @@ text, produces text, or expects native objects. RTK should not parse PowerShell
 AST itself, but capability metadata could help external planners avoid unsafe
 delegation.
 
+A structured single-command response could include:
+
+```json
+{
+  "status": "rewritten",
+  "command": "rtk read file.rs -l aggressive",
+  "lossless": false,
+  "output_kind": "code-outline",
+  "pipeline_input": "none",
+  "pipeline_output": "text",
+  "expected_savings": 0.8
+}
+```
+
+`status` distinguishes a supported no-op from an error. `lossless` and
+`output_kind` let the caller decide whether a summarized view satisfies the
+request. Pipeline metadata lets a shell-aware adapter reject text substitution
+where native objects are required. `expected_savings` should be an estimate,
+not a promise or an instruction to silently accept lossy output.
+
+The same schema should be used by `rewrite --json` and each result in
+`rewrite --batch-json`, with capabilities discoverable through
+`rtk capabilities --json`.
+
+### 4. Read intent and measurable tradeoffs
+
+The checked-in [read evaluation](read-evaluation.md) found that RTK 0.44.2
+default read was byte-equivalent to the sample and saved no estimated tokens,
+while adding process startup. `minimal` saved 3.3%; `aggressive` and line-window
+modes saved substantially more but were lossy; line numbers increased output by
+15.3%.
+
+That evidence supports intent metadata rather than a universal automatic read
+rule. RTK integrations need to distinguish exact source, bounded exact windows,
+code outlines, and line-numbered references. Relevant upstream discussions are
+[#822](https://github.com/rtk-ai/rtk/issues/822),
+[#582](https://github.com/rtk-ai/rtk/issues/582), and
+[#1362](https://github.com/rtk-ai/rtk/issues/1362).
+
+This project will not build a persistent cache that learns object-pipeline
+rewrites from speculative results. Such a cache cannot prove that PowerShell
+provider, alias, module, variable, and .NET object conditions remain equivalent;
+it would also create invalidation, privacy, and security obligations outside a
+compatibility adapter's scope.
+
 ## Codex Upstream Issue: Competing `updatedInput`
 
 At pinned source commit

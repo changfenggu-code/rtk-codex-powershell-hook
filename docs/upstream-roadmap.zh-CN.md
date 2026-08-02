@@ -85,6 +85,43 @@ rtk rewrite --batch-json
 RTK 不需要自己解析 PowerShell AST，但注册表可以暴露命令是文本输入、文本输出
 还是存在对象语义风险。外部 Planner 由此可以更准确地决定哪些槽位能委托。
 
+单条命令的结构化结果可以是：
+
+```json
+{
+  "status": "rewritten",
+  "command": "rtk read file.rs -l aggressive",
+  "lossless": false,
+  "output_kind": "code-outline",
+  "pipeline_input": "none",
+  "pipeline_output": "text",
+  "expected_savings": 0.8
+}
+```
+
+`status` 区分“支持但无需修改”和真正错误；`lossless` 与 `output_kind` 让调用方
+判断摘要是否满足当前请求；管道元数据让 shell-aware 适配器在下游需要原生对象
+时拒绝文本替换。`expected_savings` 只能是估算，不能成为静默接受有损输出的指令。
+
+`rewrite --json` 与 `rewrite --batch-json` 中的每个结果应该共用这一套 schema，
+并通过 `rtk capabilities --json` 发现能力，而不是让集成猜版本。
+
+### 4. Read 意图与可测量取舍
+
+仓库内的[读取评估](read-evaluation.zh-CN.md)显示：RTK 0.44.2 默认 read 对样本
+逐字相同、估算 token 零节省，却增加了子进程启动；`minimal` 只节省 3.3%；
+`aggressive` 和行窗口节省很高，但属于有损视图；行号模式反而增加 15.3% 输出。
+
+这个证据支持“暴露意图元数据”，不支持“一律自动改写读取”。RTK 集成需要区分
+精确源码、严格行窗口、代码轮廓和带行号引用。相关上游讨论包括
+[#822](https://github.com/rtk-ai/rtk/issues/822)、
+[#582](https://github.com/rtk-ai/rtk/issues/582) 和
+[#1362](https://github.com/rtk-ai/rtk/issues/1362)。
+
+本项目不会把推测性的对象管道 rewrite 结果做成持久化自学习缓存。PowerShell
+Provider、alias、module、变量和 .NET 对象条件无法由一次历史结果证明等价；
+缓存还会引入失效、隐私和安全责任，超出兼容适配层边界。
+
 ## Codex 上游问题：多个 `updatedInput` 写者
 
 在固定源码提交

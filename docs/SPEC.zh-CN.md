@@ -84,8 +84,8 @@ git status; head -10 Cargo.toml; cargo check
 # -> rtk git status; head -10 Cargo.toml; rtk cargo check
 ```
 
-建议 RTK 配置在 `[hooks].exclude_commands` 中包含 `cat`、`head` 和 `tail`，
-作为其他 RTK 集成的纵深保护。Codex Hook 的正确性不得依赖该配置：读取命令
+RTK 配置可以在 `[hooks].exclude_commands` 中包含 `cat`、`head` 和 `tail`，
+作为其他 RTK 集成的可选纵深保护。Codex Hook 的正确性不得依赖该配置：读取命令
 必须由 AST 计划保持原样，任何返回槽位中的 `rtk read` 候选也必须被拒绝。
 显式调用 `rtk read file -l minimal/aggressive` 不受影响。
 
@@ -258,6 +258,10 @@ if ($LASTEXITCODE -eq 1) {
 7. 只有最终命令与原始命令不同时，才返回 Codex `updatedInput`。
 8. 任意异常、超时、无效 JSON、语法错误或无法证明安全的结构都必须 fail-open。
 
+Planner 在不同 Hook 调用之间必须无状态：不得持久化输入命令、RTK 返回结果、
+归一化命令形状或“学到的”分类。新增覆盖必须落实为受版本控制的明确规则，并
+同时增加正向和拒绝测试。
+
 ### 4. Codex 协议要求
 
 改写响应必须具有以下形状：
@@ -341,12 +345,12 @@ PowerShell 的严格行窗口。调用方仍可以显式使用其过滤和预览
 当前已验证基线面向以下环境：
 
 - Codex CLI `0.146.0`；
-- RTK `0.44.1`；
+- RTK `0.44.2`；
 - PowerShell `7.6.4`；
 - Windows 上由 Codex 提供 PowerShell session shell。
 
-RTK 全局配置的 `[hooks].exclude_commands` 应当包含 `cat`、`head` 和
-`tail`，但 Codex Hook 仍必须独立保护读取命令，并在返回槽位中拒绝任何生成
+RTK 全局配置的 `[hooks].exclude_commands` 可以包含 `cat`、`head` 和
+`tail`，作为其他集成的纵深保护；Codex Hook 仍必须独立保护读取命令，并在返回槽位中拒绝任何生成
 `rtk read` 的候选，同时保留同一批次中的其他合法改写。
 
 `hooks.json` 使用 PowerShell call operator 直接执行 `.ps1`，避免再启动一个 PowerShell 进程。如果 Codex session shell 改为 `cmd.exe` 或 Git Bash，注册命令必须改为显式的 `pwsh -NoLogo -NoProfile -NonInteractive -File ...`。
@@ -402,6 +406,12 @@ pwsh -NoLogo -NoProfile -NonInteractive -File .\tests\run-all.ps1
   `rewrite --help`；
 - 卸载器只能删除本项目的注册项与 Hook 文件，并且必须保留其他 Hook；
 - `-WhatIf` 必须不创建目录或文件；生产安装器不得递归删除目录。
+- 安装器和卸载器不得修改 `%APPDATA%\rtk\config.toml` 或其他 RTK 配置；本 Hook
+  的正确性不得依赖 `exclude_commands`。
+
+仓库必须提供可复现的 read 评估器：隔离 RTK tracking 数据库、不修改 RTK 配置、
+不修改输入文件、支持结构化输出，并比较 default、minimal、aggressive、行窗口、
+尾部窗口和行号模式。耗时必须明确标注为机器相关数据，不得设置为 CI 阈值。
 
 ### 12. 变更控制
 

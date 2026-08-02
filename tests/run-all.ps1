@@ -6,6 +6,7 @@ $ErrorActionPreference = 'Stop'
 
 $tests = @(
     'test-rtk-codex-hook.ps1',
+    'test-read-evaluation.ps1',
     'test-install.ps1',
     'test-security.ps1',
     'test-package.ps1',
