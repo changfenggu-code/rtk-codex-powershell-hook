@@ -33,6 +33,8 @@ hook upstream rather than in this PowerShell compatibility layer.
 - Windows
 - PowerShell 7 (`pwsh.exe`)
 - RTK with `rtk rewrite` support; RTK `0.44.2` is the validated baseline
+- ripgrep (`rg.exe`) for RTK-backed search rewrites; ripgrep `14.1.1` is the
+  validated CI baseline
 - Codex with `PreToolUse.updatedInput` support; Codex CLI `0.146.0` is the
   validated baseline
 

@@ -9,6 +9,7 @@ Last updated: 2026-08-02.
 | Windows | Windows 11 Home China, 10.0.26200 (build 26200) | Supported baseline |
 | PowerShell | 7.6.4 | Passed |
 | RTK | 0.44.2 | Passed |
+| ripgrep | 14.1.1 | Passed; required by RTK-backed search rewrites |
 | Codex CLI | 0.146.0 | Real loopback runtime gate passed |
 
 Versions older than the validated baseline are not claimed to work. Newer

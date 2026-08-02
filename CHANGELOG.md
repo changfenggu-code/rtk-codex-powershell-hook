@@ -37,3 +37,5 @@ follow [Semantic Versioning](https://semver.org/).
   instruction files.
 - Added the official Windows `%USERPROFILE%\.local\bin\rtk.exe` convention
   between Cargo and Scoop fallbacks without invoking Unix package managers.
+- Pinned and checksum-verified ripgrep in CI and release workflows because RTK
+  search adapters require a native `rg.exe`.

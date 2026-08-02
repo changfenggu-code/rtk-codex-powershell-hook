@@ -22,6 +22,7 @@ Linux、macOS、WSL 和其他 Agent 的通用方案应该最终进入 RTK 上游
 - Windows
 - PowerShell 7（`pwsh.exe`）
 - 支持 `rtk rewrite` 的 RTK；已验证基线为 `0.44.2`
+- RTK 搜索改写所需的 ripgrep（`rg.exe`）；CI 已验证基线为 `14.1.1`
 - 支持 `PreToolUse.updatedInput` 的 Codex；已验证基线为 Codex CLI `0.146.0`
 
 ## 安装

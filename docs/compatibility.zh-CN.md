@@ -9,6 +9,7 @@
 | Windows | Windows 11 家庭中文版，10.0.26200（build 26200） | 支持基线 |
 | PowerShell | 7.6.4 | 通过 |
 | RTK | 0.44.2 | 通过 |
+| ripgrep | 14.1.1 | 通过；RTK 搜索改写需要 `rg.exe` |
 | Codex CLI | 0.146.0 | 真实回环运行时门禁通过 |
 
 不声明更早版本可用。Codex Hook 语义和 RTK rewrite 覆盖会分别演进，新版本也应重新跑发布门禁。

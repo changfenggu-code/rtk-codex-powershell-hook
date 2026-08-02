@@ -17,7 +17,7 @@
 - [ ] A direct `AGENTS.md` include of `RTK.md` warns without modifying either instruction file.
 - [ ] `scripts/evaluate-read.ps1` passes its safety and structured-output tests against the pinned RTK version.
 - [ ] `scripts/evaluate-command-savings.ps1` classifies every pinned RTK subcommand with zero unclassified entries and validates all applicable project cases.
-- [ ] CI passes on `windows-latest` with pinned RTK version and checksum.
+- [ ] CI passes on `windows-latest` with pinned RTK and ripgrep versions and checksums.
 - [ ] `scripts/package-release.ps1` produces the expected ZIP and matching SHA-256.
 
 ## Real Codex Gate
