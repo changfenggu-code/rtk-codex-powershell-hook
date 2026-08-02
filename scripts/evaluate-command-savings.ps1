@@ -405,6 +405,19 @@ try {
         'docs/SPEC.zh-CN.md'
     )
 
+    $gitDiffExecutable = $null
+    if ($null -ne $gitPath) {
+        $previousCommit = Invoke-EvaluationProcess `
+            $gitPath `
+            @('rev-parse', '--verify', 'HEAD~1') `
+            $trackingDatabase `
+            $resolvedProjectRoot `
+            -TimeoutSeconds $TimeoutSeconds
+        if ($previousCommit.ExitCode -eq 0) {
+            $gitDiffExecutable = $gitPath
+        }
+    }
+
     $logFixture = Join-Path $temporaryRoot 'project-git.log'
     if ($null -ne $gitPath) {
         $gitLog = Invoke-EvaluationProcess $gitPath @('log', '-20', '--oneline', '--decorate') $trackingDatabase $resolvedProjectRoot -TimeoutSeconds $TimeoutSeconds
@@ -450,7 +463,7 @@ try {
         @('show', '--stat', '--oneline', 'HEAD') `
         $resolvedRtkPath @('git', 'show', '--stat', '--oneline', 'HEAD')))
     $cases.Add((New-CommandEvaluationCase `
-        'git-diff-previous' 'git' 'Git' $gitPath `
+        'git-diff-previous' 'git' 'Git' $gitDiffExecutable `
         @('diff', 'HEAD~1', 'HEAD') `
         $resolvedRtkPath @('git', 'diff', 'HEAD~1', 'HEAD')))
 

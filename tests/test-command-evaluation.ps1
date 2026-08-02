@@ -49,9 +49,13 @@ Assert-True 'Command evaluator isolates RTK tracking' $report.TrackingIsolated
 Assert-True 'Command evaluator records bytes-over-four token method' ($report.TokenEstimate -eq 'ceil(UTF-8 output bytes / 4)')
 Assert-True 'Command inventory covers current RTK surface' ($report.Coverage.TotalCommands -ge 79)
 Assert-True 'Command inventory has no unclassified entries' ($report.Coverage.Unclassified -eq 0)
-Assert-True 'Quick profile measures successful project cases' (@($report.Cases | Where-Object Status -eq 'Succeeded').Count -ge 9)
+Assert-True 'Quick profile measures successful project cases' (@($report.Cases | Where-Object Status -eq 'Succeeded').Count -ge 8)
 Assert-True 'Every Quick case has a terminal status' (@($report.Cases | Where-Object Status -notin @('Succeeded', 'Skipped', 'Failed')).Count -eq 0)
-Assert-True 'No Quick case fails validation' (@($report.Cases | Where-Object Status -eq 'Failed').Count -eq 0)
+$failedCases = @($report.Cases | Where-Object Status -eq 'Failed')
+foreach ($failedCase in $failedCases) {
+    Write-Host "FAILED CASE: $($failedCase.Name): $($failedCase.Reason)" -ForegroundColor Red
+}
+Assert-True 'No Quick case fails validation' ($failedCases.Count -eq 0)
 Assert-True 'Aggregate records at least one improved case' ($report.Aggregate.ImprovedCases -gt 0)
 Assert-True 'Aggregate records nonzero native bytes' ($report.Aggregate.NativeBytes -gt 0)
 Assert-True 'Aggregate records nonzero RTK bytes' ($report.Aggregate.RtkBytes -gt 0)

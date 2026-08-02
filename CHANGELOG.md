@@ -39,3 +39,5 @@ follow [Semantic Versioning](https://semver.org/).
   between Cargo and Scoop fallbacks without invoking Unix package managers.
 - Pinned and checksum-verified ripgrep in CI and release workflows because RTK
   search adapters require a native `rg.exe`.
+- Fetched enough Git history for the previous-commit diff benchmark and made
+  that case skip cleanly when `HEAD~1` is unavailable.
