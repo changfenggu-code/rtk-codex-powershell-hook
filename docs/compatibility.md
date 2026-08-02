@@ -24,8 +24,8 @@ The Windows CI and local `tests/run-all.ps1` gate cover:
 - zero/one/one RTK process behavior for zero, one, or multiple delegates;
 - whole-source delegation and mixed-plan GUID slot validation;
 - object pipelines preserved with zero RTK invocation;
-- bare effective-PATH invocation, Cargo-before-Scoop fallback, PATH collision
-  handling, and exact path quoting including spaces and apostrophes;
+- bare effective-PATH invocation, Cargo/local-bin/Scoop fallback ordering, PATH
+  collision handling, and exact path quoting including spaces and apostrophes;
 - final absolute binding for already-prefixed `rtk cat`, `rtk git`, and
   explicit `rtk read` commands;
 - missing RTK, malformed JSON, malformed PowerShell, and oversized input
@@ -35,15 +35,23 @@ The Windows CI and local `tests/run-all.ps1` gate cover:
   idempotency;
 - instruction-overlap warnings that leave `AGENTS.md` and `RTK.md` untouched;
 - static production-script safety checks;
-- release ZIP contents and SHA-256 checksum.
-- isolated, read-only `rtk read` evaluation and structured report output.
+- release ZIP contents and SHA-256 checksum;
+- isolated, read-only command and `rtk read` evaluations with structured report
+  output and zero unclassified RTK commands.
 
-Current local result: all six suites pass with 379 assertions and zero failures.
+Current local result: all seven suites pass with 431 assertions and zero failures.
 PSScriptAnalyzer `1.25.0` and actionlint `1.7.12` also pass with zero findings.
 
 The [read evaluation](read-evaluation.md) records an RTK 0.44.2 sample with its
 input hash and methodology. Default read was exact but saved no estimated
 tokens; lossy modes remain explicit tools rather than automatic rewrites.
+
+The [command evaluation](command-evaluation.md) classifies all 79 commands in
+the RTK 0.44.2 inventory with zero unclassified entries. Its 11
+task-equivalent cases reduced estimated output from 25,598 to 15,173 tokens, a
+40.7% weighted saving within the selected command-output matrix. Four explicit
+filtered views are reported separately. Native reads and other preserved or
+non-tool context are outside that denominator.
 
 ## Real Codex Release Gate
 

@@ -13,7 +13,9 @@ This is an independent community project. It is not affiliated with or
 endorsed by OpenAI or the RTK maintainers.
 
 [中文说明](README.zh-CN.md) | [Specification](docs/SPEC.md) |
-[Compatibility](docs/compatibility.md) | [Read evaluation](docs/read-evaluation.md) |
+[Compatibility](docs/compatibility.md) |
+[Command evaluation](docs/command-evaluation.md) |
+[Read evaluation](docs/read-evaluation.md) |
 [Upstream roadmap](docs/upstream-roadmap.md)
 
 ## Scope
@@ -51,8 +53,10 @@ Install with automatic RTK discovery:
 Without `-RtkPath`, the installer first checks applications named `rtk` in
 PowerShell execution order. A compatible effective `PATH` command stays a bare
 `rtk` invocation. If `PATH` has no compatible RTK, the installer checks bounded
-Cargo locations before bounded Scoop locations and binds the validated fallback
-by absolute path. It never recursively scans a drive or edits `PATH`.
+Cargo locations, the official Windows local-bin convention
+`%USERPROFILE%\.local\bin\rtk.exe`, and then bounded Scoop locations. The
+validated fallback is bound by absolute path. It never recursively scans a
+drive, invokes Homebrew or a Unix installer, or edits `PATH`.
 
 Bind a specific RTK executable by absolute path:
 
@@ -172,8 +176,22 @@ pwsh -NoLogo -NoProfile -NonInteractive -File .\scripts\run-actionlint.ps1 -Boot
 
 The suites cover AST rules, Codex JSON protocol, RTK invocation counts,
 generated-command smoke tests, path quoting, missing-RTK fail-open behavior,
-safe install/upgrade/uninstall, the isolated `rtk read` evaluator, static safety
-checks, and release packaging.
+safe install/upgrade/uninstall, the isolated command and `rtk read` evaluators,
+static safety checks, and release packaging.
+
+Reproduce the project-wide RTK command inventory and output-savings matrix:
+
+```powershell
+pwsh -NoProfile -File .\scripts\evaluate-command-savings.ps1 `
+  -EvaluationProfile Full -Iterations 3
+```
+
+The [command evaluation report](docs/command-evaluation.md) classifies all 79
+commands exposed by RTK 0.44.2 and measures every command family applicable to
+this repository. The selected task-equivalent command output saved 40.7% of
+estimated tokens in the documented reference run. This is not a whole-session
+rate: native reads and other preserved output dilute real tool-output savings,
+and individual commands can be neutral or regress.
 
 Reproduce the read-policy measurements without modifying the user RTK tracking
 database or configuration:

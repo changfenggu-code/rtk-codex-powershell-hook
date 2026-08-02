@@ -21,88 +21,8 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-function Resolve-EvaluationRtkPath {
-    param([string]$RequestedPath)
-
-    if ([string]::IsNullOrWhiteSpace($RequestedPath)) {
-        $command = Get-Command rtk.exe, rtk -ErrorAction Stop | Select-Object -First 1
-        return [IO.Path]::GetFullPath($command.Source)
-    }
-    if (-not [IO.Path]::IsPathFullyQualified($RequestedPath)) {
-        throw 'RtkPath must be an absolute path.'
-    }
-
-    $resolved = [IO.Path]::GetFullPath($RequestedPath)
-    if (-not [IO.File]::Exists($resolved)) {
-        throw "RTK executable does not exist: $resolved"
-    }
-    return $resolved
-}
-
-function Invoke-CapturedProcess {
-    param(
-        [Parameter(Mandatory)][string]$Executable,
-        [Parameter(Mandatory)][string[]]$Arguments,
-        [Parameter(Mandatory)][string]$TrackingDatabase
-    )
-
-    $startInfo = [Diagnostics.ProcessStartInfo]::new()
-    $startInfo.FileName = $Executable
-    $startInfo.UseShellExecute = $false
-    $startInfo.CreateNoWindow = $true
-    $startInfo.RedirectStandardOutput = $true
-    $startInfo.RedirectStandardError = $true
-    $startInfo.Environment['RTK_DB_PATH'] = $TrackingDatabase
-    $startInfo.Environment['RTK_TELEMETRY_DISABLED'] = '1'
-    foreach ($argument in $Arguments) {
-        $null = $startInfo.ArgumentList.Add($argument)
-    }
-
-    $stopwatch = [Diagnostics.Stopwatch]::StartNew()
-    $process = $null
-    try {
-        $process = [Diagnostics.Process]::Start($startInfo)
-        $stdoutTask = $process.StandardOutput.ReadToEndAsync()
-        $stderrTask = $process.StandardError.ReadToEndAsync()
-        if (-not $process.WaitForExit(60000)) {
-            $process.Kill($true)
-            $process.WaitForExit()
-            throw "RTK process timed out after 60000 ms: $Executable"
-        }
-        $stdout = $stdoutTask.GetAwaiter().GetResult()
-        $stderr = $stderrTask.GetAwaiter().GetResult()
-        $exitCode = $process.ExitCode
-    }
-    finally {
-        $stopwatch.Stop()
-        if ($null -ne $process) {
-            $process.Dispose()
-        }
-    }
-
-    [pscustomobject]@{
-        ExitCode = $exitCode
-        StandardOutput = $stdout
-        StandardError = $stderr
-        ElapsedMilliseconds = $stopwatch.Elapsed.TotalMilliseconds
-    }
-}
-
-function Get-LineCount {
-    param([AllowEmptyString()][string]$Text)
-
-    if ($Text.Length -eq 0) {
-        return 0
-    }
-    $newlines = [regex]::Matches($Text, "`n").Count
-    return $newlines + $(if ($Text.EndsWith("`n", [StringComparison]::Ordinal)) { 0 } else { 1 })
-}
-
-function Get-EstimatedTokens {
-    param([AllowEmptyString()][string]$Text)
-
-    return [long][math]::Ceiling($Text.Length / 4.0)
-}
+$common = Join-Path $PSScriptRoot 'evaluation-common.ps1'
+. $common
 
 function Measure-RtkReadCase {
     param(
@@ -114,14 +34,14 @@ function Measure-RtkReadCase {
         [Parameter(Mandatory)][int]$SampleCount
     )
 
-    $cold = Invoke-CapturedProcess $Executable (@('read') + $Arguments) $TrackingDatabase
+    $cold = Invoke-EvaluationProcess $Executable (@('read') + $Arguments) $TrackingDatabase
     if ($cold.ExitCode -ne 0) {
         throw "rtk read case '$Name' failed with exit code $($cold.ExitCode): $($cold.StandardError)"
     }
 
     $totalMilliseconds = 0.0
     for ($index = 0; $index -lt $SampleCount; $index++) {
-        $sample = Invoke-CapturedProcess $Executable (@('read') + $Arguments) $TrackingDatabase
+        $sample = Invoke-EvaluationProcess $Executable (@('read') + $Arguments) $TrackingDatabase
         if ($sample.ExitCode -ne 0) {
             throw "rtk read case '$Name' failed during sampling: $($sample.StandardError)"
         }
@@ -129,8 +49,8 @@ function Measure-RtkReadCase {
     }
 
     $output = $cold.StandardOutput
-    $rawTokens = Get-EstimatedTokens $RawContent
-    $outputTokens = Get-EstimatedTokens $output
+    $rawTokens = Get-EvaluationEstimatedTokens $RawContent
+    $outputTokens = Get-EvaluationEstimatedTokens $output
     $savings = if ($rawTokens -eq 0) {
         0.0
     }
@@ -141,8 +61,9 @@ function Measure-RtkReadCase {
     [pscustomobject]@{
         Mode = $Name
         Characters = $output.Length
+        Bytes = Get-EvaluationUtf8ByteCount $output
         EstimatedTokens = $outputTokens
-        Lines = Get-LineCount $output
+        Lines = Get-EvaluationLineCount $output
         SavingsPercent = $savings
         Exact = $output -ceq $RawContent
         ColdMilliseconds = [math]::Round($cold.ElapsedMilliseconds, 3)
@@ -165,11 +86,11 @@ $trackingDatabase = Join-Path $temporaryRoot 'tracking.db'
 [IO.Directory]::CreateDirectory($temporaryRoot) | Out-Null
 
 try {
-    $versionResult = Invoke-CapturedProcess $resolvedRtkPath @('--version') $trackingDatabase
+    $versionResult = Invoke-EvaluationProcess $resolvedRtkPath @('--version') $trackingDatabase
     if ($versionResult.ExitCode -ne 0 -or $versionResult.StandardOutput -notmatch '^rtk \d+\.\d+\.\d+') {
         throw "RTK version check failed: $($versionResult.StandardError)"
     }
-    $helpResult = Invoke-CapturedProcess $resolvedRtkPath @('read', '--help') $trackingDatabase
+    $helpResult = Invoke-EvaluationProcess $resolvedRtkPath @('read', '--help') $trackingDatabase
     if ($helpResult.ExitCode -ne 0) {
         throw "RTK read compatibility check failed: $($helpResult.StandardError)"
     }
@@ -197,13 +118,14 @@ try {
         FileSha256 = (Get-FileHash -LiteralPath $resolvedFile -Algorithm SHA256).Hash.ToLowerInvariant()
         FileBytes = $fileInfo.Length
         FileCharacters = $rawContent.Length
-        FileLines = Get-LineCount $rawContent
-        EstimatedRawTokens = Get-EstimatedTokens $rawContent
+        FileLines = Get-EvaluationLineCount $rawContent
+        EstimatedRawTokens = Get-EvaluationEstimatedTokens $rawContent
         RtkPath = $resolvedRtkPath
         RtkVersion = $versionResult.StandardOutput.Trim()
         PowerShellVersion = $PSVersionTable.PSVersion.ToString()
         Iterations = $Iterations
         WindowLines = $WindowLines
+        TokenEstimate = 'ceil(UTF-8 output bytes / 4)'
         NativeGetContentAverageMilliseconds = [math]::Round(
             $nativeStopwatch.Elapsed.TotalMilliseconds / $Iterations,
             3
@@ -225,7 +147,7 @@ try {
             Write-Host "Raw:        $($report.FileCharacters) characters / ~$($report.EstimatedRawTokens) tokens"
             Write-Host "Get-Content average: $($report.NativeGetContentAverageMilliseconds) ms"
             $report.Cases |
-                Select-Object Mode, Characters, EstimatedTokens, Lines, SavingsPercent, Exact,
+                Select-Object Mode, Characters, Bytes, EstimatedTokens, Lines, SavingsPercent, Exact,
                     ColdMilliseconds, AverageMilliseconds |
                 Format-Table -AutoSize
         }

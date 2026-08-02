@@ -103,11 +103,12 @@ $dryRunRoot = [IO.Path]::GetFullPath((Join-Path $fixturesRoot ('dry-' + [Guid]::
 $invalidRoot = [IO.Path]::GetFullPath((Join-Path $fixturesRoot ('invalid-' + [Guid]::NewGuid().ToString('N'))))
 $pathCaseRoot = [IO.Path]::GetFullPath((Join-Path $fixturesRoot ('path-' + [Guid]::NewGuid().ToString('N'))))
 $cargoCaseRoot = [IO.Path]::GetFullPath((Join-Path $fixturesRoot ('cargo-' + [Guid]::NewGuid().ToString('N'))))
+$localBinCaseRoot = [IO.Path]::GetFullPath((Join-Path $fixturesRoot ('local-bin-' + [Guid]::NewGuid().ToString('N'))))
 $scoopCaseRoot = [IO.Path]::GetFullPath((Join-Path $fixturesRoot ('scoop-' + [Guid]::NewGuid().ToString('N'))))
 $collisionCaseRoot = [IO.Path]::GetFullPath((Join-Path $fixturesRoot ('collision-' + [Guid]::NewGuid().ToString('N'))))
 foreach ($testPath in @(
     $caseRoot, $dryRunRoot, $invalidRoot, $pathCaseRoot,
-    $cargoCaseRoot, $scoopCaseRoot, $collisionCaseRoot
+    $cargoCaseRoot, $localBinCaseRoot, $scoopCaseRoot, $collisionCaseRoot
 )) {
     if (-not $testPath.StartsWith($fixturesRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
         throw "Installer test path escaped the fixture root: $testPath"
@@ -248,8 +249,10 @@ try {
         $cargoHome = Join-Path $fixturesRoot 'cargo-home'
         $scoopRoot = Join-Path $fixturesRoot 'scoop-root'
         $cargoRtk = Join-Path $cargoHome 'bin\rtk.exe'
+        $localBinRtk = Join-Path $isolatedUser '.local\bin\rtk.exe'
         $scoopRtk = Join-Path $scoopRoot 'shims\rtk.exe'
         Copy-RtkFixture $rtkPath $cargoRtk
+        Copy-RtkFixture $rtkPath $localBinRtk
         Copy-RtkFixture $rtkPath $scoopRtk
 
         $env:PATH = $pathWithoutRtk
@@ -260,11 +263,19 @@ try {
         $cargoConfig = [IO.File]::ReadAllText((Join-Path $cargoCaseRoot 'hooks.json')) | ConvertFrom-Json -AsHashtable
         $cargoRegistration = @(Get-RtkRegistrations $cargoConfig)[0]
         Assert-True 'Cargo fallback binds absolute RTK path' ([string]$cargoRegistration['command'] -match [regex]::Escape($cargoRtk))
+        Assert-True 'Cargo fallback takes priority over local bin' (-not ([string]$cargoRegistration['command'] -match [regex]::Escape($localBinRtk)))
         Assert-True 'Cargo fallback takes priority over Scoop' (-not ([string]$cargoRegistration['command'] -match [regex]::Escape($scoopRtk)))
 
         $emptyCargoHome = Join-Path $fixturesRoot 'empty-cargo-home'
         [IO.Directory]::CreateDirectory($emptyCargoHome) | Out-Null
         $env:CARGO_HOME = $emptyCargoHome
+        & $installerPath -CodexHome $localBinCaseRoot -Confirm:$false
+        $localBinConfig = [IO.File]::ReadAllText((Join-Path $localBinCaseRoot 'hooks.json')) | ConvertFrom-Json -AsHashtable
+        $localBinRegistration = @(Get-RtkRegistrations $localBinConfig)[0]
+        Assert-True 'Local-bin fallback binds absolute RTK path' ([string]$localBinRegistration['command'] -match [regex]::Escape($localBinRtk))
+        Assert-True 'Local-bin fallback takes priority over Scoop' (-not ([string]$localBinRegistration['command'] -match [regex]::Escape($scoopRtk)))
+
+        $env:USERPROFILE = Join-Path $fixturesRoot 'scoop-only-user'
         & $installerPath -CodexHome $scoopCaseRoot -Confirm:$false
         $scoopConfig = [IO.File]::ReadAllText((Join-Path $scoopCaseRoot 'hooks.json')) | ConvertFrom-Json -AsHashtable
         $scoopRegistration = @(Get-RtkRegistrations $scoopConfig)[0]

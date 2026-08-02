@@ -141,11 +141,14 @@ bounded fallback providers, in this order:
 
 1. Cargo: `%CARGO_HOME%\bin\rtk.exe`, then
    `%USERPROFILE%\.cargo\bin\rtk.exe`;
-2. Scoop: configured and conventional Scoop roots, then `scoop prefix rtk`.
+2. native Windows local bin: `%USERPROFILE%\.local\bin\rtk.exe`;
+3. Scoop: configured and conventional Scoop roots, then `scoop prefix rtk`.
 
 Each fallback candidate MUST pass the same compatibility checks and MUST be
 bound by absolute path. The installer MUST NOT recursively scan a drive or edit
-the user's PATH.
+the user's PATH. It MUST NOT invoke Homebrew or a Unix installation script;
+their Linux, macOS, and WSL installations are outside this native Windows
+process boundary.
 
 When `-RtkPath` is registered, that file MUST be used for the rewrite
 subprocess. One final AST binding pass MUST replace every statically resolvable
@@ -216,3 +219,17 @@ tracking from the user's database, does not modify RTK configuration, does not
 modify the input file, emits structured output, and compares default, minimal,
 aggressive, line-window, tail-window, and line-number modes. Timing results MUST
 be documented as machine-specific and MUST NOT be enforced as CI thresholds.
+
+The repository MUST also include a project-output evaluator that parses the
+live `rtk --help` inventory, classifies every exposed command, measures each
+command family applicable to this repository, and reports task-equivalent
+results separately from explicit lossy views. A validated RTK baseline MUST
+have zero unclassified commands. Token estimates MUST use UTF-8 output bytes,
+and unavailable native baselines MUST be skipped rather than measured against
+an error message.
+
+Published aggregates MUST name their denominator and MUST NOT present a
+selected project-output matrix as whole-session AI token savings. Reports MUST
+disclose dilution from preserved output and non-tool context. Any workload-mix
+projection without observed session traces MUST be labeled as a scenario, not
+as a measurement.

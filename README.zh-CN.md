@@ -6,7 +6,7 @@ Codex 现在已经支持 `PreToolUse` 返回 `permissionDecision: "allow"` 和 `
 
 这是独立的社区项目，与 OpenAI 或 RTK 维护团队不存在隶属或背书关系。
 
-[English](README.md) | [中文规范](docs/SPEC.zh-CN.md) | [兼容性](docs/compatibility.zh-CN.md) | [读取评估](docs/read-evaluation.zh-CN.md) | [上游改进手册](docs/upstream-roadmap.zh-CN.md)
+[English](README.md) | [中文规范](docs/SPEC.zh-CN.md) | [兼容性](docs/compatibility.zh-CN.md) | [全命令评估](docs/command-evaluation.zh-CN.md) | [读取评估](docs/read-evaluation.zh-CN.md) | [上游改进手册](docs/upstream-roadmap.zh-CN.md)
 
 ## 项目边界
 
@@ -38,7 +38,7 @@ Linux、macOS、WSL 和其他 Agent 的通用方案应该最终进入 RTK 上游
 .\install.cmd
 ```
 
-不传 `-RtkPath` 时，安装器先按 PowerShell 的实际执行顺序检查名为 `rtk` 的应用程序。若 `PATH` 中排在第一位的有效命令兼容，就保留裸 `rtk` 调用；若 `PATH` 中没有兼容 RTK，则先检查有限的 Cargo 位置，再检查有限的 Scoop 位置，并用验证后的兜底绝对路径绑定。安装器不会递归扫描磁盘，也不会修改 `PATH`。
+不传 `-RtkPath` 时，安装器先按 PowerShell 的实际执行顺序检查名为 `rtk` 的应用程序。若 `PATH` 中排在第一位的有效命令兼容，就保留裸 `rtk` 调用；若 `PATH` 中没有兼容 RTK，则依次检查有限的 Cargo 位置、官方 Windows 本地二进制示例位置 `%USERPROFILE%\.local\bin\rtk.exe`，最后检查有限的 Scoop 位置，并用验证后的兜底绝对路径绑定。安装器不会递归扫描磁盘、调用 Homebrew 或 Unix 安装脚本，也不会修改 `PATH`。
 
 也可以由用户显式提供 RTK 绝对路径：
 
@@ -132,7 +132,16 @@ pwsh -NoProfile -File .\scripts\run-real-codex-e2e.ps1
 
 这条命令创建一次性 `CODEX_HOME`，并启动只监听 `127.0.0.1` 的本地 Responses API 固件。它不会读取当前 Codex provider 或认证文件，也不会把数据发送到本机之外。第一阶段证明改写后的命令仍会被 Codex 策略拦截；第二阶段只执行固定的 `git status --short`，并验证输出确实经由真实 Codex 运行时返回。运行该门禁需要 Node.js。
 
-测试覆盖 AST 规则、Codex JSON 协议、RTK 调用次数、真实生成命令、带空格和单引号的路径、RTK 缺失时 fail-open、安装/升级/卸载、静态安全审计与发布包内容。
+测试覆盖 AST 规则、Codex JSON 协议、RTK 调用次数、真实生成命令、带空格和单引号的路径、RTK 缺失时 fail-open、安装/升级/卸载、全命令分类、隔离评估器、静态安全审计与发布包内容。
+
+可以用下面的命令复现项目范围内的 RTK 命令清单与输出节省矩阵：
+
+```powershell
+pwsh -NoProfile -File .\scripts\evaluate-command-savings.ps1 `
+  -EvaluationProfile Full -Iterations 3
+```
+
+[全命令评估报告](docs/command-evaluation.zh-CN.md)对 RTK 0.44.2 暴露的 79 条命令全部做了分类，并实测所有适用于本仓库的命令族。文档基准中，被选中的任务等价命令输出加权节省为 40.7%；这不是整个 AI 会话的节省率，普通文件读取和其他 Preserve 输出占比越高，真实工具输出级比例越低。
 
 可以用下面的命令复现读取策略测试；脚本使用一次性 RTK tracking 数据库，不会改动用户的 RTK 配置或统计数据库：
 

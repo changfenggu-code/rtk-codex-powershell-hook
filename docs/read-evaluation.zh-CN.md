@@ -21,21 +21,21 @@ pwsh -NoLogo -NoProfile -NonInteractive -File .\scripts\evaluate-read.ps1 `
 - 为每个 RTK 子进程设置指向一次性目录中精确数据库文件的 `RTK_DB_PATH`，并设置 `RTK_TELEMETRY_DISABLED=1`；
 - 最后只删除经过父目录和固定前缀校验的一次性目录；
 - 不修改用户的 RTK 配置；RTK 子进程启动时仍可能按自身逻辑读取正常配置；
-- 用 `ceil(字符数 / 4)` 估算 token，只用于比较相对输出规模，不冒充某个具体 tokenizer 的精确计数。
+- 用 `ceil(UTF-8 输出字节数 / 4)` 估算 token，与全命令评估和 RTK 文档的近似口径一致；它只用于比较相对输出规模，不冒充某个具体 tokenizer 的精确计数。
 
 ## RTK 0.44.2 实测
 
-样本文件为相邻 espkit 仓库中的 `crates/std/btleplus/src/runtime/scan/mod.rs`，SHA-256 为 `6dd6bf9322ba3cd626110f255f7677c44c7a1b66b22e53b4e549027009b7b294`。原文 13,819 字符、353 行，估算约 3,455 token。环境为 PowerShell 7.6.4、RTK 0.44.2；每项采样十次，行窗口为 100。
+样本文件为本仓库当前的 `rtk-codex-hook.ps1`，SHA-256 为 `38266e84a193d7ffc828a45eba592cdc680f7652dc6a9cfb5c50724ab9bf547a`。原文 42,319 字节、42,319 字符、1,487 行，估算约 10,580 token。环境为 PowerShell 7.6.4、RTK 0.44.2；每项采样两次，行窗口为 100。
 
 | 模式 | 字符数 | 估算 token | 行数 | 节省 | 逐字相同 | 平均耗时 ms |
 | --- | ---: | ---: | ---: | ---: | :---: | ---: |
-| 原生 `Get-Content -Raw` | 13,819 | 3,455 | 353 | 0.0% | 是 | 4.586 |
-| `rtk read` 默认 | 13,819 | 3,455 | 353 | 0.0% | 是 | 143.179 |
-| `rtk read -l minimal` | 13,367 | 3,342 | 347 | 3.3% | 否 | 121.159 |
-| `rtk read -l aggressive` | 1,593 | 399 | 41 | 88.5% | 否 | 146.204 |
-| `rtk read --max-lines 100` | 2,390 | 598 | 100 | 82.7% | 否 | 101.890 |
-| `rtk read --tail-lines 100` | 4,595 | 1,149 | 100 | 66.7% | 否 | 161.763 |
-| `rtk read --line-numbers` | 15,937 | 3,985 | 353 | -15.3% | 否 | 114.016 |
+| 原生 `Get-Content -Raw` | 42,319 | 10,580 | 1,487 | 0.0% | 是 | 9.733 |
+| `rtk read` 默认 | 42,319 | 10,580 | 1,487 | 0.0% | 是 | 105.930 |
+| `rtk read -l minimal` | 42,318 | 10,580 | 1,487 | 0.0% | 否 | 180.167 |
+| `rtk read -l aggressive` | 2,311 | 578 | 73 | 94.5% | 否 | 201.749 |
+| `rtk read --max-lines 100` | 1,868 | 467 | 100 | 95.6% | 否 | 193.579 |
+| `rtk read --tail-lines 100` | 2,589 | 648 | 100 | 93.9% | 否 | 137.370 |
+| `rtk read --line-numbers` | 52,728 | 13,926 | 1,487 | -31.6% | 否 | 116.951 |
 
 耗时包含子进程启动，只代表这台 Windows 机器；CI 不设置性能阈值。JSON 中仍保留冷启动耗时，但它不改变策略结论，所以表中没有展开。
 
@@ -43,7 +43,7 @@ pwsh -NoLogo -NoProfile -NonInteractive -File .\scripts\evaluate-read.ps1 `
 
 默认 `rtk read` 在该文件上逐字无损，却没有减少任何输出 token，还增加了一次子进程启动。因此，把所有 `Get-Content` 自动换成它只会增加延迟。
 
-`minimal` 对普通手写 Rust 的压缩幅度很小；`aggressive` 和 `--max-lines` 节省明显，但都是有损视图，无法保证调用方要的是完整源码或严格的前 N 行。`--tail-lines` 在用户明确要求尾部窗口时有用，但输出 token 不优于原生 bounded tail。`--line-numbers` 的价值是稳定引用，不是压缩。
+`minimal` 对当前 Hook 源码没有 token 收益；`aggressive` 和 `--max-lines` 节省明显，但都是有损视图，无法保证调用方要的是完整源码或严格的前 N 行。`--tail-lines` 在用户明确要求尾部窗口时有用，但输出 token 不优于原生 bounded tail。`--line-numbers` 的价值是稳定引用，不是压缩。
 
 这并不等于 `rtk read` 没用。第一次观察巨大文件结构、浏览可去除大量噪声的生成代码、或者需要带行号交流时，显式调用仍有价值。关键边界是“用户选择有损视图”，而不是 Hook 在背后静默改变读取语义。
 

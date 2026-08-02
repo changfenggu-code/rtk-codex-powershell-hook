@@ -16,6 +16,7 @@
 - [ ] Already-prefixed `rtk cat`, `rtk git`, explicit `rtk read`, and mixed commands bind correctly in absolute mode.
 - [ ] A direct `AGENTS.md` include of `RTK.md` warns without modifying either instruction file.
 - [ ] `scripts/evaluate-read.ps1` passes its safety and structured-output tests against the pinned RTK version.
+- [ ] `scripts/evaluate-command-savings.ps1` classifies every pinned RTK subcommand with zero unclassified entries and validates all applicable project cases.
 - [ ] CI passes on `windows-latest` with pinned RTK version and checksum.
 - [ ] `scripts/package-release.ps1` produces the expected ZIP and matching SHA-256.
 
@@ -24,11 +25,12 @@
 - [ ] Run `scripts/run-real-codex-e2e.ps1` with Node.js available.
 - [ ] Confirm the fixture bound only to `127.0.0.1` and the disposable Codex home was removed.
 - [ ] Confirm the default install rewrote raw `git status --short` to bare `rtk git status --short`.
-- [ ] Confirm deterministic tests cover explicit, PATH-collision, Cargo, and Scoop absolute bindings.
+- [ ] Confirm deterministic tests cover explicit, PATH-collision, Cargo, Windows local-bin, and Scoop absolute bindings.
 - [ ] Confirm the policy phase declined the rewritten command under `workspace-write`/`never`.
 - [ ] Confirm the fixed-command execution phase completed and returned `function_call_output`.
 - [ ] Record Windows, PowerShell, RTK, Codex versions and date in compatibility docs.
 - [ ] Record the read sample hash and results without treating timings as portable thresholds.
+- [ ] Record command-output aggregates without mixing explicit lossy views into the task-equivalent result.
 
 ## Remote Actions
 

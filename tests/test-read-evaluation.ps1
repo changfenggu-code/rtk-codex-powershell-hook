@@ -52,6 +52,7 @@ fn beta() {
     Assert-True 'Evaluator returns schema version 1' ($report.SchemaVersion -eq 1)
     Assert-True 'Evaluator reports RTK version' ($report.RtkVersion -match '^rtk \d+\.\d+\.\d+')
     Assert-True 'Evaluator isolates RTK tracking' $report.TrackingIsolated
+    Assert-True 'Evaluator records bytes-over-four token method' ($report.TokenEstimate -eq 'ceil(UTF-8 output bytes / 4)')
     Assert-True 'Evaluator records six modes' ($report.Cases.Count -eq 6)
     Assert-True 'Evaluator records positive Get-Content timing' ($report.NativeGetContentAverageMilliseconds -ge 0)
 
@@ -62,6 +63,7 @@ fn beta() {
     $tailLines = Get-Case $report 'tail-lines'
     $lineNumbers = Get-Case $report 'line-numbers'
     Assert-True 'Default read is exact' $default.Exact
+    Assert-True 'Default read records UTF-8 byte count' ($default.Bytes -eq [Text.Encoding]::UTF8.GetByteCount($source))
     Assert-True 'Default read saves zero estimated tokens' ($default.SavingsPercent -eq 0)
     Assert-True 'Minimal read removes ordinary comments' ($minimal.Characters -lt $default.Characters)
     Assert-True 'Aggressive read is smaller than minimal' ($aggressive.Characters -lt $minimal.Characters)

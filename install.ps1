@@ -162,6 +162,16 @@ function Resolve-ValidatedRtk {
         }
     }
 
+    if (-not [string]::IsNullOrWhiteSpace($userHome)) {
+        $localBinCandidate = Join-Path $userHome '.local\bin\rtk.exe'
+        if (Test-RtkCompatibility $localBinCandidate) {
+            if ($pathCandidates.Count -gt 0) {
+                Write-Warning "The effective PATH command is not compatible RTK: $($pathCandidates[0].Path). Using a validated local-bin candidate by absolute path: $localBinCandidate"
+            }
+            return New-RtkResolution ([IO.Path]::GetFullPath($localBinCandidate)) 'Local bin' 'Absolute'
+        }
+    }
+
     $scoopCandidates = [Collections.Generic.List[object]]::new()
     $scoopSeen = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
     $scoopRoots = [Collections.Generic.List[string]]::new()
@@ -209,7 +219,7 @@ function Resolve-ValidatedRtk {
         }
     }
 
-    throw 'Compatible RTK was not found on PATH or in bounded Cargo/Scoop locations. Install RTK, add it to PATH, or pass -RtkPath with an absolute path.'
+    throw 'Compatible RTK was not found on PATH or in bounded Cargo/local-bin/Scoop locations. Install RTK, add it to PATH, or pass -RtkPath with an absolute path.'
 }
 
 function Get-PotentialBashHookConflicts {

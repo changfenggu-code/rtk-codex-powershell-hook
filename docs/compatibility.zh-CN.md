@@ -22,19 +22,21 @@ Windows CI 与本地 `tests/run-all.ps1` 共同覆盖：
 - 0/1/多个 Delegate 对应 0/1/1 次 RTK 进程；
 - 纯 Delegate 整体调用和混合计划 GUID 槽位校验；
 - PowerShell 对象管道保持原样且 RTK 调用数为 0；
-- PATH 第一候选的裸 `rtk` 调用、Cargo 优先于 Scoop 的兜底、PATH 冲突处理，以及含空格和单引号的精确路径绑定；
+- PATH 第一候选的裸 `rtk` 调用、Cargo/Windows local bin/Scoop 兜底顺序、PATH 冲突处理，以及含空格和单引号的精确路径绑定；
 - 已加前缀的 `rtk cat`、`rtk git` 与显式 `rtk read` 在最终输出边界完成绝对路径绑定；
 - RTK 缺失、JSON/PowerShell 语法错误、超大输入时 fail-open；
 - 实际执行生成的 `rtk rg`、`rtk find`、`rtk ls` 和显式 `rtk read`；
 - 安装、升级、冲突告警、备份、卸载、`-WhatIf` 和幂等；
 - `RTK.md` 指令重叠告警不会修改 `AGENTS.md` 或 `RTK.md`；
 - 生产脚本静态安全审计；
-- 发布 ZIP 内容和 SHA-256。
-- 隔离、只读的 `rtk read` 评估与结构化报告输出。
+- 发布 ZIP 内容和 SHA-256；
+- 隔离、只读的全命令与 `rtk read` 评估、结构化报告输出，以及 RTK 命令未分类数量为 0。
 
-当前本地结果：六套测试共 379 条断言，全部零失败通过；PSScriptAnalyzer `1.25.0` 和 actionlint `1.7.12` 也都是零告警通过。
+当前本地结果：七套测试共 431 条断言，全部零失败通过；PSScriptAnalyzer `1.25.0` 和 actionlint `1.7.12` 也都是零告警通过。
 
 [读取评估](read-evaluation.zh-CN.md)记录了 RTK 0.44.2 样本的输入哈希和测试方法。默认 read 逐字相同但不节省估算 token；有损模式继续作为显式工具，而非自动改写。
+
+[全命令评估](command-evaluation.zh-CN.md)对 RTK 0.44.2 的 79 条命令全部完成分类，未分类数量为 0。选定命令输出矩阵中的 11 个任务等价案例从 25,598 token 降至 15,173，加权节省 40.7%；另外 4 个显式过滤视图单独报告。普通读取、其他 Preserve 输出和非工具上下文不在这个分母内。
 
 ## 真实 Codex 发布门禁
 

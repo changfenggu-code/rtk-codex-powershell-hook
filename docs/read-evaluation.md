@@ -27,27 +27,28 @@ The evaluator:
 - deletes only that validated temporary directory;
 - does not modify the user's RTK configuration; RTK itself may still load its
   normal configuration while starting;
-- estimates tokens as `ceil(characters / 4)`, so token figures compare relative
+- estimates tokens as `ceil(UTF-8 output bytes / 4)`, matching the command
+  evaluator and RTK's documented approximation; the figures compare relative
   output size rather than predict one specific tokenizer exactly.
 
 ## RTK 0.44.2 Result
 
-The validated sample was
-`espkit/crates/std/btleplus/src/runtime/scan/mod.rs`, SHA-256
-`6dd6bf9322ba3cd626110f255f7677c44c7a1b66b22e53b4e549027009b7b294`.
-It contained 13,819 characters, 353 lines, and approximately 3,455 estimated
-tokens. Measurements used PowerShell 7.6.4, RTK 0.44.2, ten timed samples, and a
-100-line window.
+The validated sample was this repository's current `rtk-codex-hook.ps1`,
+SHA-256
+`38266e84a193d7ffc828a45eba592cdc680f7652dc6a9cfb5c50724ab9bf547a`.
+It contained 42,319 bytes, 42,319 characters, 1,487 lines, and approximately
+10,580 estimated tokens. Measurements used PowerShell 7.6.4, RTK 0.44.2, two
+timed samples, and a 100-line window.
 
 | Mode | Characters | Estimated tokens | Lines | Savings | Exact | Average ms |
 | --- | ---: | ---: | ---: | ---: | :---: | ---: |
-| Native `Get-Content -Raw` | 13,819 | 3,455 | 353 | 0.0% | Yes | 4.586 |
-| `rtk read` default | 13,819 | 3,455 | 353 | 0.0% | Yes | 143.179 |
-| `rtk read -l minimal` | 13,367 | 3,342 | 347 | 3.3% | No | 121.159 |
-| `rtk read -l aggressive` | 1,593 | 399 | 41 | 88.5% | No | 146.204 |
-| `rtk read --max-lines 100` | 2,390 | 598 | 100 | 82.7% | No | 101.890 |
-| `rtk read --tail-lines 100` | 4,595 | 1,149 | 100 | 66.7% | No | 161.763 |
-| `rtk read --line-numbers` | 15,937 | 3,985 | 353 | -15.3% | No | 114.016 |
+| Native `Get-Content -Raw` | 42,319 | 10,580 | 1,487 | 0.0% | Yes | 9.733 |
+| `rtk read` default | 42,319 | 10,580 | 1,487 | 0.0% | Yes | 105.930 |
+| `rtk read -l minimal` | 42,318 | 10,580 | 1,487 | 0.0% | No | 180.167 |
+| `rtk read -l aggressive` | 2,311 | 578 | 73 | 94.5% | No | 201.749 |
+| `rtk read --max-lines 100` | 1,868 | 467 | 100 | 95.6% | No | 193.579 |
+| `rtk read --tail-lines 100` | 2,589 | 648 | 100 | 93.9% | No | 137.370 |
+| `rtk read --line-numbers` | 52,728 | 13,926 | 1,487 | -31.6% | No | 116.951 |
 
 Timing includes process startup and is specific to this Windows machine. CI
 does not enforce timing thresholds. Cold-process timings are retained in JSON
@@ -59,7 +60,7 @@ Default `rtk read` is lossless for this file, but it saves no output tokens and
 adds a child process. Rewriting every `Get-Content` to this form would therefore
 add latency without reducing model-visible text.
 
-`minimal` removed little from ordinary handwritten Rust. `aggressive` and
+`minimal` saved no estimated tokens on the current Hook source. `aggressive` and
 `--max-lines` saved substantial output, but they are intentionally lossy and
 cannot preserve a caller's request for exact source or exact leading lines.
 `--tail-lines` can be useful when explicitly requested, but it does not improve

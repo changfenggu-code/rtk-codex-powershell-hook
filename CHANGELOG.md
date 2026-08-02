@@ -18,6 +18,8 @@ follow [Semantic Versioning](https://semver.org/).
 - English and Chinese documentation, CI, release packaging, and test suites.
 - Reproducible, read-only `rtk read` evaluation with isolated tracking,
   structured output, safety tests, and bilingual evidence reports.
+- Complete RTK command-inventory and project-output evaluation with explicit
+  applicability classes, task-equivalent aggregation, and bilingual reports.
 - RTK 0.44.2 validation baseline and pinned Windows release checksum.
 
 ### Changed
@@ -33,3 +35,5 @@ follow [Semantic Versioning](https://semver.org/).
   validated executable without another registry rewrite attempt.
 - Warned about legacy `AGENTS.md` includes of `RTK.md` without modifying user
   instruction files.
+- Added the official Windows `%USERPROFILE%\.local\bin\rtk.exe` convention
+  between Cargo and Scoop fallbacks without invoking Unix package managers.

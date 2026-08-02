@@ -340,7 +340,7 @@ RTK 全局配置的 `[hooks].exclude_commands` 可以包含 `cat`、`head` 和 `
 
 用户显式传入的 `-RtkPath` 必须是指向现有文件的绝对路径，并通过 `--version` 与 `rewrite --help` 验证；它拥有最高优先级，安装器必须把它写入 Hook 注册。未传入 `-RtkPath` 时，安装器必须按照 PowerShell 实际执行顺序枚举 `PATH` 中名为 `rtk` 的应用程序：第一候选兼容时不写 `-RtkPath`，rewrite 子进程与生成命令都使用裸 `rtk`；第一候选不兼容但后续候选兼容时，必须告警并用后续候选的绝对路径绑定。
 
-如果 `PATH` 没有兼容候选，安装器只允许按固定顺序检查有限兜底位置：先检查 `%CARGO_HOME%\bin\rtk.exe`，再检查 `%USERPROFILE%\.cargo\bin\rtk.exe`；仍未找到时，才检查已配置或约定的 Scoop 根目录以及 `scoop prefix rtk`。每个候选都必须通过相同的兼容性验证，并以绝对路径绑定。安装器不得递归扫描磁盘，也不得修改用户 `PATH`。
+如果 `PATH` 没有兼容候选，安装器只允许按固定顺序检查有限兜底位置：先检查 `%CARGO_HOME%\bin\rtk.exe`，再检查 `%USERPROFILE%\.cargo\bin\rtk.exe`，随后检查原生 Windows 本地二进制位置 `%USERPROFILE%\.local\bin\rtk.exe`；仍未找到时，才检查已配置或约定的 Scoop 根目录以及 `scoop prefix rtk`。每个候选都必须通过相同的兼容性验证，并以绝对路径绑定。安装器不得递归扫描磁盘、修改用户 `PATH`、调用 Homebrew 或执行 Unix 安装脚本；Linux、macOS 与 WSL 安装属于另一个进程边界。
 
 注册了 `-RtkPath` 时，该文件既用于 `rtk rewrite` 子进程，也必须通过一次最终 AST 绑定替换所有静态可解析的 `rtk` 或 `rtk.exe` 可执行文件 token，无论它来自 Hook 生成结果还是原始输入；配置文件丢失时必须 fail-open，不得回退到 `PATH`。裸模式下运行时找不到 `rtk` 也必须 fail-open。
 
@@ -371,6 +371,9 @@ pwsh -NoLogo -NoProfile -NonInteractive -File .\tests\run-all.ps1
 - 使用当前 Codex 版本生成的 `pre-tool-use.command.output.schema.json` 校验真实响应。
 - 使用安装器绑定的、含空格与单引号的 RTK 路径完成子进程协议测试；
 - 验证发布 ZIP 内容和 SHA-256，并在发版前通过本机回环 Responses 固件和一次性 Codex home 完成真实 Codex 端到端门禁；门禁必须同时证明改写后仍受 Codex 策略约束，以及固定命令在显式 bypass 阶段的真实执行结果会返回模型协议。
+- 全命令评估器必须动态解析当前 `rtk --help`，对每条命令完成分类，实测所有适用于本仓库的命令族，并把任务等价结果与显式有损视图分开聚合；已验证 RTK 基线的未分类命令数必须为 0。
+- Token 估算必须使用 UTF-8 输出字节数；缺少原生可执行文件时必须标记为跳过，不能把错误消息当作有效对照数据。
+- 发布的聚合结果必须明确分母，不得把选定的项目命令输出矩阵描述成整个 AI 会话的 token 节省率；报告必须披露 Preserve 输出与非工具上下文的稀释效应，没有真实会话轨迹支撑的工作负载推算必须标记为情景分析而非实测。
 
 断言数量不是稳定接口；新增规则时，正向案例和对应的拒绝案例必须成对增加。
 
@@ -381,7 +384,7 @@ pwsh -NoLogo -NoProfile -NonInteractive -File .\tests\run-all.ps1
 - 卷根目录、无效现有 JSON、无效源 Hook 或越界目标必须在任何目标写入前失败；
 - 安装前必须备份已有目标，临时文件必须与目标位于同一目录并在验证后替换；
 - 重复安装必须保持一个 RTK 注册，同时保留其他 matcher 和 Hook；
-- 安装前必须按“显式路径、PATH、Cargo、Scoop”的顺序解析 RTK，并验证候选文件、`--version` 与 `rewrite --help`；PATH 的有效第一候选使用裸命令，其他成功路径使用绝对绑定；
+- 安装前必须按“显式路径、PATH、Cargo、Windows local bin、Scoop”的顺序解析 RTK，并验证候选文件、`--version` 与 `rewrite --help`；PATH 的有效第一候选使用裸命令，其他成功路径使用绝对绑定；
 - 安装器不得递归扫描磁盘或修改用户 `PATH`；
 - 卸载器只能删除本项目的注册项与 Hook 文件，并且必须保留其他 Hook；
 - `-WhatIf` 必须不创建目录或文件；生产安装器不得递归删除目录。
