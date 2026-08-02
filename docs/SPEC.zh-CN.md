@@ -75,19 +75,14 @@ rg RuntimeActor crates
 # -> rtk rg RuntimeActor crates
 ```
 
-当全部顶层命令都属于 RTK Delegate 时，整条原始命令一次交给 `rtk rewrite`；
-当 Delegate 与 Preserve/HookRewrite 混合时，才把多个不连续候选复制到临时
-批次，一次完成改写，再按原始 AST extent 放回。原始命令本身不会插入哨兵：
+当全部顶层命令都属于 RTK Delegate 时，整条原始命令一次交给 `rtk rewrite`；当 Delegate 与 Preserve/HookRewrite 混合时，才把多个不连续候选复制到临时批次，一次完成改写，再按原始 AST extent 放回。原始命令本身不会插入哨兵：
 
 ```powershell
 git status; head -10 Cargo.toml; cargo check
 # -> rtk git status; head -10 Cargo.toml; rtk cargo check
 ```
 
-RTK 配置可以在 `[hooks].exclude_commands` 中包含 `cat`、`head` 和 `tail`，
-作为其他 RTK 集成的可选纵深保护。Codex Hook 的正确性不得依赖该配置：读取命令
-必须由 AST 计划保持原样，任何返回槽位中的 `rtk read` 候选也必须被拒绝。
-显式调用 `rtk read file -l minimal/aggressive` 不受影响。
+RTK 配置可以在 `[hooks].exclude_commands` 中包含 `cat`、`head` 和 `tail`，作为其他 RTK 集成的可选纵深保护。Codex Hook 的正确性不得依赖该配置：读取命令必须由 AST 计划保持原样，任何返回槽位中的 `rtk read` 候选也必须被拒绝。显式调用 `rtk read file -l minimal/aggressive` 不受影响。
 
 **黄色：有意保持原样**
 
@@ -104,9 +99,7 @@ head -100 Cargo.toml
 tail -50 app.log
 ```
 
-普通 `rtk read` 默认完整输出，自动替换不能减少 token，且会增加进程开销；
-`--max-lines` 是智能摘要而不是严格的前 N 行。因此读取命令保持原样，
-`rtk read` 只作为显式过滤或预览工具使用。
+普通 `rtk read` 默认完整输出，自动替换不能减少 token，且会增加进程开销；`--max-lines` 是智能摘要而不是严格的前 N 行。因此读取命令保持原样，`rtk read` 只作为显式过滤或预览工具使用。
 
 参数依赖运行时变量：
 
@@ -133,8 +126,7 @@ RTK 搜索或目录输出是面向模型的文本视图，不应拿去覆盖文�
 Get-Content search.rs | Select-Object -Skip 450 -First 130
 ```
 
-该命令本身已经把输出限制为 130 行；自动改写既不继续节省 token，也无法
-保持严格的起始行语义。
+该命令本身已经把输出限制为 130 行；自动改写既不继续节省 token，也无法保持严格的起始行语义。
 
 依赖 PowerShell 对象的管道：
 
@@ -213,8 +205,7 @@ if ($LASTEXITCODE -eq 1) {
           否 -> 自动改写
 ```
 
-所以它大致覆盖日常搜代码、列目录以及可整体折叠的搜索管道；单纯查看文件
-继续由 PowerShell 原生命令完成，也不会把通用 PowerShell 脚本强行文本化。
+所以它大致覆盖日常搜代码、列目录以及可整体折叠的搜索管道；单纯查看文件继续由 PowerShell 原生命令完成，也不会把通用 PowerShell 脚本强行文本化。
 
 ---
 
@@ -247,20 +238,14 @@ if ($LASTEXITCODE -eq 1) {
 
 1. 校验 Codex `PreToolUse` 输入、`tool_name` 和 `tool_input.command`。
 2. 使用 PowerShell 官方 AST 解析原始命令。
-3. 将完整顶层命令或管道规划为 `Preserve`、`HookRewrite` 或
-   `DelegateToRtk`，并保存每个节点在原始字符串中的 extent。
+3. 将完整顶层命令或管道规划为 `Preserve`、`HookRewrite` 或 `DelegateToRtk`，并保存每个节点在原始字符串中的 extent。
 4. 在内存中完成 `HookRewrite`；`Preserve` 不进入 RTK 输入。
-5. 没有 Delegate 时不启动 RTK；一个 Delegate 直接调用一次；如果全部顶层
-   pipeline 都是 Delegate，则整条原始命令调用一次；混合计划中的多个 Delegate
-   才复制到带随机 GUID 哨兵的临时批次。每次 Hook 最多调用一次 `rtk rewrite`。
-6. 使用 PowerShell AST 校验 RTK 返回的哨兵和槽位，把候选映射回原始 extent；
-   任何生成 `rtk read` 的候选只回退对应槽位。
+5. 没有 Delegate 时不启动 RTK；一个 Delegate 直接调用一次；如果全部顶层 pipeline 都是 Delegate，则整条原始命令调用一次；混合计划中的多个 Delegate 才复制到带随机 GUID 哨兵的临时批次。每次 Hook 最多调用一次 `rtk rewrite`。
+6. 使用 PowerShell AST 校验 RTK 返回的哨兵和槽位，把候选映射回原始 extent；任何生成 `rtk read` 的候选只回退对应槽位。
 7. 只有最终命令与原始命令不同时，才返回 Codex `updatedInput`。
 8. 任意异常、超时、无效 JSON、语法错误或无法证明安全的结构都必须 fail-open。
 
-Planner 在不同 Hook 调用之间必须无状态：不得持久化输入命令、RTK 返回结果、
-归一化命令形状或“学到的”分类。新增覆盖必须落实为受版本控制的明确规则，并
-同时增加正向和拒绝测试。
+Planner 在不同 Hook 调用之间必须无状态：不得持久化输入命令、RTK 返回结果、归一化命令形状或“学到的”分类。新增覆盖必须落实为受版本控制的明确规则，并同时增加正向和拒绝测试。
 
 ### 4. Codex 协议要求
 
@@ -313,8 +298,7 @@ PowerShell cmdlet 可以返回强类型对象，而 RTK 子命令主要返回供
 - `Get-ChildItem | Get-FileHash` 之类的对象管道必须保持原样；
 - 赋值右侧、子表达式和未知消费者前的 cmdlet 必须保持原样；
 - 只有整个管道能被证明可折叠为一个 RTK 命令时，才可以替换整个管道；
-- 已识别的 PowerShell 对象管道必须在 Planner 阶段直接 Preserve，不得先调用
-  RTK 试写再回退；
+- 已识别的 PowerShell 对象管道必须在 Planner 阶段直接 Preserve，不得先调用 RTK 试写再回退；
 - 不得仅因命令文本包含受支持名称就在任意 AST 深度进行替换。
 
 ### 7. 已知的有损差异
@@ -326,8 +310,7 @@ RTK 本身是面向模型输出的压缩层，不保证与原命令逐字节等�
 - `rtk find` 会应用自身的结果上限和 ignore 规则，适合代码探索，不适合作为完整文件清单的业务输入。
 - .NET 正则与 ripgrep 正则并非完全同构。常见 lookaround/backreference 使用 PCRE2；已知无法安全映射的 .NET balancing group 必须保持原样。
 
-`rtk read` 不属于自动改写面：普通读取没有 token 收益，智能截断也不等价于
-PowerShell 的严格行窗口。调用方仍可以显式使用其过滤和预览能力。
+`rtk read` 不属于自动改写面：普通读取没有 token 收益，智能截断也不等价于 PowerShell 的严格行窗口。调用方仍可以显式使用其过滤和预览能力。
 
 ### 8. 失败与安全策略
 
@@ -349,20 +332,13 @@ PowerShell 的严格行窗口。调用方仍可以显式使用其过滤和预览
 - PowerShell `7.6.4`；
 - Windows 上由 Codex 提供 PowerShell session shell。
 
-RTK 全局配置的 `[hooks].exclude_commands` 可以包含 `cat`、`head` 和
-`tail`，作为其他集成的纵深保护；Codex Hook 仍必须独立保护读取命令，并在返回槽位中拒绝任何生成
-`rtk read` 的候选，同时保留同一批次中的其他合法改写。
+RTK 全局配置的 `[hooks].exclude_commands` 可以包含 `cat`、`head` 和 `tail`，作为其他集成的纵深保护；Codex Hook 仍必须独立保护读取命令，并在返回槽位中拒绝任何生成 `rtk read` 的候选，同时保留同一批次中的其他合法改写。
 
 `hooks.json` 使用 PowerShell call operator 直接执行 `.ps1`，避免再启动一个 PowerShell 进程。如果 Codex session shell 改为 `cmd.exe` 或 Git Bash，注册命令必须改为显式的 `pwsh -NoLogo -NoProfile -NonInteractive -File ...`。
 
-安装器必须解析并验证一个 RTK 绝对路径，通过 `-RtkPath` 注入 Hook。该路径既要
-用于 `rtk rewrite` 子进程，也要替换生成命令中的 `rtk`，确保改写阶段与最终
-执行阶段使用同一个二进制。配置路径丢失时必须 fail-open，不得悄悄回退到
-`PATH` 中的另一个 RTK。
+安装器必须解析并验证一个 RTK 绝对路径，通过 `-RtkPath` 注入 Hook。该路径既要用于 `rtk rewrite` 子进程，也要替换生成命令中的 `rtk`，确保改写阶段与最终执行阶段使用同一个二进制。配置路径丢失时必须 fail-open，不得悄悄回退到 `PATH` 中的另一个 RTK。
 
-当前 Codex 在多个匹配 Hook 都返回 `updatedInput` 时，选择实际完成得最晚的
-结果。安装器应该对其他可能匹配 `Bash` 的 command Hook 发出潜在冲突警告，
-但不得删除、重排或篡改它们。
+当前 Codex 在多个匹配 Hook 都返回 `updatedInput` 时，选择实际完成得最晚的结果。安装器应该对其他可能匹配 `Bash` 的 command Hook 发出潜在冲突警告，但不得删除、重排或篡改它们。
 
 ### 10. 验收要求
 
@@ -385,13 +361,10 @@ pwsh -NoLogo -NoProfile -NonInteractive -File .\tests\run-all.ps1
 - `rtk read` 单槽回退不得牺牲同一批次中的其他合法改写；
 - 通过子进程执行真实 Hook；
 - 通过 `hooks.json` 所用命令形状启动 Hook；
-- 验证原生文件读取保持原样，显式 `rtk read` 可用，并实际执行生成的
-  `rtk rg --pcre2`、`rtk find` 和 `rtk ls`；
+- 验证原生文件读取保持原样，显式 `rtk read` 可用，并实际执行生成的 `rtk rg --pcre2`、`rtk find` 和 `rtk ls`；
 - 使用当前 Codex 版本生成的 `pre-tool-use.command.output.schema.json` 校验真实响应。
 - 使用安装器绑定的、含空格与单引号的 RTK 路径完成子进程协议测试；
-- 验证发布 ZIP 内容和 SHA-256，并在发版前通过本机回环 Responses 固件和一次性
-  Codex home 完成真实 Codex 端到端门禁；门禁必须同时证明改写后仍受 Codex
-  策略约束，以及固定命令在显式 bypass 阶段的真实执行结果会返回模型协议。
+- 验证发布 ZIP 内容和 SHA-256，并在发版前通过本机回环 Responses 固件和一次性 Codex home 完成真实 Codex 端到端门禁；门禁必须同时证明改写后仍受 Codex 策略约束，以及固定命令在显式 bypass 阶段的真实执行结果会返回模型协议。
 
 断言数量不是稳定接口；新增规则时，正向案例和对应的拒绝案例必须成对增加。
 
@@ -402,16 +375,12 @@ pwsh -NoLogo -NoProfile -NonInteractive -File .\tests\run-all.ps1
 - 卷根目录、无效现有 JSON、无效源 Hook 或越界目标必须在任何目标写入前失败；
 - 安装前必须备份已有目标，临时文件必须与目标位于同一目录并在验证后替换；
 - 重复安装必须保持一个 RTK 注册，同时保留其他 matcher 和 Hook；
-- 安装前必须验证用户指定或 PATH 解析出的 RTK 绝对路径、`--version` 与
-  `rewrite --help`；
+- 安装前必须验证用户指定或 PATH 解析出的 RTK 绝对路径、`--version` 与 `rewrite --help`；
 - 卸载器只能删除本项目的注册项与 Hook 文件，并且必须保留其他 Hook；
 - `-WhatIf` 必须不创建目录或文件；生产安装器不得递归删除目录。
-- 安装器和卸载器不得修改 `%APPDATA%\rtk\config.toml` 或其他 RTK 配置；本 Hook
-  的正确性不得依赖 `exclude_commands`。
+- 安装器和卸载器不得修改 `%APPDATA%\rtk\config.toml` 或其他 RTK 配置；本 Hook 的正确性不得依赖 `exclude_commands`。
 
-仓库必须提供可复现的 read 评估器：隔离 RTK tracking 数据库、不修改 RTK 配置、
-不修改输入文件、支持结构化输出，并比较 default、minimal、aggressive、行窗口、
-尾部窗口和行号模式。耗时必须明确标注为机器相关数据，不得设置为 CI 阈值。
+仓库必须提供可复现的 read 评估器：隔离 RTK tracking 数据库、不修改 RTK 配置、不修改输入文件、支持结构化输出，并比较 default、minimal、aggressive、行窗口、尾部窗口和行号模式。耗时必须明确标注为机器相关数据，不得设置为 CI 阈值。
 
 ### 12. 变更控制
 
