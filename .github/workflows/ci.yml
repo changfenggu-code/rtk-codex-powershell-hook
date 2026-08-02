@@ -89,7 +89,7 @@ jobs:
         run: pwsh -NoLogo -NoProfile -NonInteractive -File .\scripts\package-release.ps1 -Version 0.0.0-ci -OutputDirectory .\artifacts
 
       - name: Upload release-package smoke artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: rtk-codex-powershell-hook-ci
           path: artifacts/*
