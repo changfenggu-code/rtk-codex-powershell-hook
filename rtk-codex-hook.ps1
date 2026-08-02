@@ -869,6 +869,9 @@ function Get-StandaloneRewriteDecision {
 
     $name = Get-CommandLeafName $Command
     switch ($name) {
+        { $_ -in @('rtk', 'rtk.exe') } {
+            return New-RewriteDecision 'Preserve'
+        }
         { $_ -in @('get-content', 'gc', 'cat', 'type', 'head', 'tail') } {
             return New-RewriteDecision 'Preserve'
         }
@@ -967,10 +970,6 @@ function Convert-PowerShellNativeCommands {
         }
         $coveredExtents.Add($extent)
         if ($null -ne $replacement) {
-            $replacement = ConvertTo-BoundRtkCommands $replacement
-            if ($null -eq $replacement) {
-                continue
-            }
             $replacements.Add([pscustomobject]@{
                 Start = $extent.Start
                 End = $extent.End
@@ -1016,12 +1015,11 @@ function Convert-PowerShellNativeCommands {
 
         $decision = Get-StandaloneRewriteDecision $command
         if ($decision.Disposition -eq 'HookRewrite') {
-            $replacement = ConvertTo-BoundRtkCommands $decision.Replacement
-            if ($null -ne $replacement -and $replacement -ne $command.Extent.Text) {
+            if ($decision.Replacement -ne $command.Extent.Text) {
                 $replacements.Add([pscustomobject]@{
                     Start = $command.Extent.StartOffset
                     End = $command.Extent.EndOffset
-                    Text = $replacement
+                    Text = $decision.Replacement
                 })
             }
         }
@@ -1066,7 +1064,11 @@ function Convert-PowerShellNativeCommands {
         $length = $replacement.End - $replacement.Start
         $result = $result.Remove($replacement.Start, $length).Insert($replacement.Start, $replacement.Text)
     }
-    return $result
+    $boundResult = ConvertTo-BoundRtkCommands $result
+    if ($null -eq $boundResult) {
+        return $Source
+    }
+    return $boundResult
 }
 
 function Resolve-RtkExecutable {
@@ -1134,7 +1136,7 @@ function Invoke-RtkRewrite {
     ) {
         return $null
     }
-    return ConvertTo-BoundRtkCommands $result.Text
+    return $result.Text
 }
 
 function Test-ContainsRtkReadCommand {
@@ -1318,10 +1320,6 @@ function ConvertFrom-RtkBatchRewrite {
             $candidate -ne $delegate.Original -and
             -not (Test-ContainsRtkReadCommand $candidate)
         ) {
-            $candidate = ConvertTo-BoundRtkCommands $candidate
-            if ($null -eq $candidate) {
-                continue
-            }
             [pscustomobject]@{
                 Start = $delegate.Start
                 End = $delegate.End

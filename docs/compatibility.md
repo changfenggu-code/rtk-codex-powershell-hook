@@ -24,17 +24,21 @@ The Windows CI and local `tests/run-all.ps1` gate cover:
 - zero/one/one RTK process behavior for zero, one, or multiple delegates;
 - whole-source delegation and mixed-plan GUID slot validation;
 - object pipelines preserved with zero RTK invocation;
-- exact RTK path quoting, including spaces and apostrophes;
+- bare effective-PATH invocation, Cargo-before-Scoop fallback, PATH collision
+  handling, and exact path quoting including spaces and apostrophes;
+- final absolute binding for already-prefixed `rtk cat`, `rtk git`, and
+  explicit `rtk read` commands;
 - missing RTK, malformed JSON, malformed PowerShell, and oversized input
   fail-open behavior;
 - generated `rtk rg`, `rtk find`, `rtk ls`, and explicit `rtk read` execution;
 - install, upgrade, conflict warning, backup, uninstall, `-WhatIf`, and
   idempotency;
+- instruction-overlap warnings that leave `AGENTS.md` and `RTK.md` untouched;
 - static production-script safety checks;
 - release ZIP contents and SHA-256 checksum.
 - isolated, read-only `rtk read` evaluation and structured report output.
 
-Current local result: all six suites pass with 354 assertions and zero failures.
+Current local result: all six suites pass with 379 assertions and zero failures.
 PSScriptAnalyzer `1.25.0` and actionlint `1.7.12` also pass with zero findings.
 
 The [read evaluation](read-evaluation.md) records an RTK 0.44.2 sample with its
@@ -51,8 +55,8 @@ The script never reads the active Codex provider or authentication files.
 
 The gate has two phases for the same raw model command, `git status --short`:
 
-1. Under `workspace-write` with approvals set to `never`, the Hook rewrites to
-   the installer-bound absolute RTK path and Codex declines the resulting
+1. Under `workspace-write` with approvals set to `never`, the default install
+   rewrites to bare `rtk git status --short` and Codex declines the resulting
    command. This proves `updatedInput` does not bypass Codex policy.
 2. With approvals and sandbox explicitly bypassed for this fixed local command,
    the same rewrite executes successfully and its shell output appears in the

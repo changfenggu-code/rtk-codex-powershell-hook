@@ -10,7 +10,9 @@ follow [Semantic Versioning](https://semver.org/).
 
 - Windows-native Codex `PreToolUse` adapter using transparent `updatedInput`.
 - PowerShell AST planner with `Preserve`, `HookRewrite`, and `DelegateToRtk`.
-- Exact RTK path binding for both rewrite and final execution.
+- Deterministic RTK discovery with bare effective-PATH invocation, explicit
+  absolute binding, PATH-collision handling, and bounded Cargo-before-Scoop
+  fallbacks.
 - Single-process whole-source and GUID-delimited mixed-plan delegation.
 - Safe, idempotent install, upgrade, uninstall, backups, and conflict warnings.
 - English and Chinese documentation, CI, release packaging, and test suites.
@@ -25,3 +27,9 @@ follow [Semantic Versioning](https://semver.org/).
   candidates are rejected.
 - Made the planner's no-learning/no-persistent-cache policy and the installer's
   no-RTK-config-mutation boundary explicit.
+- Decoupled read-boundary tests from optional user-level RTK
+  `exclude_commands` configuration.
+- Centralized absolute RTK binding so already-prefixed commands use the same
+  validated executable without another registry rewrite attempt.
+- Warned about legacy `AGENTS.md` includes of `RTK.md` without modifying user
+  instruction files.

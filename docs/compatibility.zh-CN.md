@@ -22,15 +22,17 @@ Windows CI 与本地 `tests/run-all.ps1` 共同覆盖：
 - 0/1/多个 Delegate 对应 0/1/1 次 RTK 进程；
 - 纯 Delegate 整体调用和混合计划 GUID 槽位校验；
 - PowerShell 对象管道保持原样且 RTK 调用数为 0；
-- 带空格和单引号的精确 RTK 路径；
+- PATH 第一候选的裸 `rtk` 调用、Cargo 优先于 Scoop 的兜底、PATH 冲突处理，以及含空格和单引号的精确路径绑定；
+- 已加前缀的 `rtk cat`、`rtk git` 与显式 `rtk read` 在最终输出边界完成绝对路径绑定；
 - RTK 缺失、JSON/PowerShell 语法错误、超大输入时 fail-open；
 - 实际执行生成的 `rtk rg`、`rtk find`、`rtk ls` 和显式 `rtk read`；
 - 安装、升级、冲突告警、备份、卸载、`-WhatIf` 和幂等；
+- `RTK.md` 指令重叠告警不会修改 `AGENTS.md` 或 `RTK.md`；
 - 生产脚本静态安全审计；
 - 发布 ZIP 内容和 SHA-256。
 - 隔离、只读的 `rtk read` 评估与结构化报告输出。
 
-当前本地结果：六套测试共 354 条断言，全部零失败通过；PSScriptAnalyzer `1.25.0` 和 actionlint `1.7.12` 也都是零告警通过。
+当前本地结果：六套测试共 379 条断言，全部零失败通过；PSScriptAnalyzer `1.25.0` 和 actionlint `1.7.12` 也都是零告警通过。
 
 [读取评估](read-evaluation.zh-CN.md)记录了 RTK 0.44.2 样本的输入哈希和测试方法。默认 read 逐字相同但不节省估算 token；有损模式继续作为显式工具，而非自动改写。
 
@@ -40,7 +42,7 @@ Windows CI 与本地 `tests/run-all.ps1` 共同覆盖：
 
 门禁对同一条原始模型命令 `git status --short` 执行两个阶段：
 
-1. 在 `workspace-write` 且审批策略为 `never` 时，Hook 改写到安装器绑定的 RTK 绝对路径，随后 Codex 拒绝执行，证明 `updatedInput` 不会绕过 Codex 策略；
+1. 在 `workspace-write` 且审批策略为 `never` 时，默认安装把命令改写为裸 `rtk git status --short`，随后 Codex 拒绝执行，证明 `updatedInput` 不会绕过 Codex 策略；
 2. 仅针对这条固定本地命令显式关闭审批和 sandbox 后，同一改写成功执行，shell 输出作为 `function_call_output` 出现在下一次 Responses 请求中。
 
 当前门禁状态：**已于 2026-08-02 通过**。环境为 Codex CLI `0.146.0`、RTK `0.44.2`、PowerShell `7.6.4`、Windows `10.0.26200`。原生读取、混合计划、对象管道 Preserve、RTK 缺失 fail-open 和更广命令矩阵仍由确定性测试套件负责。这项门禁验证真实 Codex Hook/运行时协议，不验证任何外部模型或 provider 的质量。

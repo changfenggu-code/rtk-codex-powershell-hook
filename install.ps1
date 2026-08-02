@@ -33,7 +33,67 @@ function Assert-ContainedPath {
     }
 }
 
-function Resolve-ValidatedRtkPath {
+function Test-RtkCompatibility {
+    param([Parameter(Mandatory)][string]$Path)
+
+    if (-not [IO.File]::Exists($Path)) {
+        return $false
+    }
+
+    try {
+        & $Path --version 2>$null | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            return $false
+        }
+        & $Path rewrite --help 2>$null | Out-Null
+        return $LASTEXITCODE -eq 0
+    }
+    catch {
+        return $false
+    }
+}
+
+function Add-RtkCandidate {
+    param(
+        [Parameter(Mandatory)][AllowEmptyCollection()][Collections.Generic.List[object]]$Candidates,
+        [Parameter(Mandatory)][AllowEmptyCollection()][Collections.Generic.HashSet[string]]$Seen,
+        [string]$Path,
+        [Parameter(Mandatory)][string]$Source
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Path)) {
+        return
+    }
+    try {
+        $resolved = [IO.Path]::GetFullPath($Path.Trim())
+    }
+    catch {
+        return
+    }
+    if ($Seen.Add($resolved)) {
+        $Candidates.Add([pscustomobject]@{
+            Path = $resolved
+            Source = $Source
+        })
+    }
+}
+
+function New-RtkResolution {
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][string]$Source,
+        [ValidateSet('Bare', 'Absolute')]
+        [string]$Invocation
+    )
+
+    [pscustomobject]@{
+        Path = $Path
+        Source = $Source
+        Invocation = $Invocation
+    }
+}
+
+function Resolve-ValidatedRtk {
     param([string]$RequestedPath)
 
     if (-not [string]::IsNullOrWhiteSpace($RequestedPath)) {
@@ -41,34 +101,115 @@ function Resolve-ValidatedRtkPath {
             throw 'RtkPath must be an absolute path.'
         }
         $resolved = [IO.Path]::GetFullPath($RequestedPath)
+        if (-not [IO.File]::Exists($resolved)) {
+            throw "RTK executable does not exist: $resolved"
+        }
+        if (-not (Test-RtkCompatibility $resolved)) {
+            throw "RTK compatibility check failed for explicit path: $resolved"
+        }
+        return New-RtkResolution $resolved 'Explicit' 'Absolute'
+    }
+
+    $pathCandidates = [Collections.Generic.List[object]]::new()
+    $pathSeen = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    $pathCommands = @(Get-Command rtk -All -CommandType Application -ErrorAction SilentlyContinue)
+    if ($pathCommands.Count -eq 0) {
+        $pathCommands = @(Get-Command rtk.exe -All -CommandType Application -ErrorAction SilentlyContinue)
+    }
+    foreach ($command in $pathCommands) {
+        Add-RtkCandidate $pathCandidates $pathSeen $command.Source 'PATH'
+    }
+
+    if ($pathCandidates.Count -gt 0) {
+        $effective = $pathCandidates[0]
+        if (Test-RtkCompatibility $effective.Path) {
+            return New-RtkResolution $effective.Path 'PATH' 'Bare'
+        }
+
+        for ($index = 1; $index -lt $pathCandidates.Count; $index++) {
+            $candidate = $pathCandidates[$index]
+            if (Test-RtkCompatibility $candidate.Path) {
+                Write-Warning "The effective PATH command is not compatible RTK: $($effective.Path). Using a later validated candidate by absolute path: $($candidate.Path)"
+                return New-RtkResolution $candidate.Path 'PATH collision' 'Absolute'
+            }
+        }
+    }
+
+    $cargoCandidates = [Collections.Generic.List[object]]::new()
+    $cargoSeen = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    $cargoRoots = [Collections.Generic.List[string]]::new()
+    if (-not [string]::IsNullOrWhiteSpace($env:CARGO_HOME)) {
+        $cargoRoots.Add($env:CARGO_HOME)
+    }
+    $userHome = if (-not [string]::IsNullOrWhiteSpace($env:USERPROFILE)) {
+        $env:USERPROFILE
     }
     else {
-        $command = Get-Command rtk.exe, rtk -ErrorAction SilentlyContinue | Select-Object -First 1
-        if ($null -eq $command) {
-            throw 'RTK was not found on PATH. Install RTK or pass -RtkPath with an absolute path.'
-        }
-        $resolved = [IO.Path]::GetFullPath($command.Source)
+        $HOME
     }
-
-    if (-not [IO.File]::Exists($resolved)) {
-        throw "RTK executable does not exist: $resolved"
+    if (-not [string]::IsNullOrWhiteSpace($userHome)) {
+        $cargoRoots.Add((Join-Path $userHome '.cargo'))
     }
-
-    try {
-        & $resolved --version 2>$null | Out-Null
-        if ($LASTEXITCODE -ne 0) {
-            throw "--version exited with $LASTEXITCODE"
-        }
-        & $resolved rewrite --help 2>$null | Out-Null
-        if ($LASTEXITCODE -ne 0) {
-            throw "rewrite --help exited with $LASTEXITCODE"
+    foreach ($cargoRoot in $cargoRoots) {
+        Add-RtkCandidate $cargoCandidates $cargoSeen (Join-Path $cargoRoot 'bin\rtk.exe') 'Cargo'
+    }
+    foreach ($candidate in $cargoCandidates) {
+        if (Test-RtkCompatibility $candidate.Path) {
+            if ($pathCandidates.Count -gt 0) {
+                Write-Warning "The effective PATH command is not compatible RTK: $($pathCandidates[0].Path). Using a validated Cargo candidate by absolute path: $($candidate.Path)"
+            }
+            return New-RtkResolution $candidate.Path 'Cargo' 'Absolute'
         }
     }
-    catch {
-        throw "RTK compatibility check failed for '$resolved': $($_.Exception.Message)"
+
+    $scoopCandidates = [Collections.Generic.List[object]]::new()
+    $scoopSeen = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    $scoopRoots = [Collections.Generic.List[string]]::new()
+    if (-not [string]::IsNullOrWhiteSpace($env:SCOOP)) {
+        $scoopRoots.Add($env:SCOOP)
+    }
+    if (-not [string]::IsNullOrWhiteSpace($userHome)) {
+        $scoopRoots.Add((Join-Path $userHome 'scoop'))
+    }
+    if (-not [string]::IsNullOrWhiteSpace($env:ProgramData)) {
+        $scoopRoots.Add((Join-Path $env:ProgramData 'scoop'))
+    }
+    foreach ($scoopRoot in $scoopRoots) {
+        Add-RtkCandidate $scoopCandidates $scoopSeen (Join-Path $scoopRoot 'shims\rtk.exe') 'Scoop'
+        Add-RtkCandidate $scoopCandidates $scoopSeen (Join-Path $scoopRoot 'apps\rtk\current\rtk.exe') 'Scoop'
+    }
+    foreach ($candidate in $scoopCandidates) {
+        if (Test-RtkCompatibility $candidate.Path) {
+            if ($pathCandidates.Count -gt 0) {
+                Write-Warning "The effective PATH command is not compatible RTK: $($pathCandidates[0].Path). Using a validated Scoop candidate by absolute path: $($candidate.Path)"
+            }
+            return New-RtkResolution $candidate.Path 'Scoop' 'Absolute'
+        }
     }
 
-    return $resolved
+    $scoop = Get-Command scoop -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($null -ne $scoop) {
+        try {
+            foreach ($prefix in @(& $scoop.Source prefix rtk 2>$null)) {
+                $prefixCandidates = [Collections.Generic.List[object]]::new()
+                $prefixSeen = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+                Add-RtkCandidate $prefixCandidates $prefixSeen (Join-Path ([string]$prefix) 'rtk.exe') 'Scoop'
+                foreach ($candidate in $prefixCandidates) {
+                    if (Test-RtkCompatibility $candidate.Path) {
+                        if ($pathCandidates.Count -gt 0) {
+                            Write-Warning "The effective PATH command is not compatible RTK: $($pathCandidates[0].Path). Using a validated Scoop candidate by absolute path: $($candidate.Path)"
+                        }
+                        return New-RtkResolution $candidate.Path 'Scoop' 'Absolute'
+                    }
+                }
+            }
+        }
+        catch {
+            Write-Verbose "Scoop prefix lookup failed: $($_.Exception.Message)"
+        }
+    }
+
+    throw 'Compatible RTK was not found on PATH or in bounded Cargo/Scoop locations. Install RTK, add it to PATH, or pass -RtkPath with an absolute path.'
 }
 
 function Get-PotentialBashHookConflicts {
@@ -114,6 +255,32 @@ function Get-PotentialBashHookConflicts {
         }
     }
     return $conflicts.ToArray()
+}
+
+function Get-RtkInstructionReferences {
+    param([Parameter(Mandatory)][string]$AgentsPath)
+
+    if (-not [IO.File]::Exists($AgentsPath)) {
+        return @()
+    }
+
+    $references = [Collections.Generic.List[string]]::new()
+    try {
+        foreach ($line in [IO.File]::ReadAllLines($AgentsPath)) {
+            $trimmed = $line.Trim()
+            if (-not $trimmed.StartsWith('@', [StringComparison]::Ordinal)) {
+                continue
+            }
+            $reference = $trimmed.Substring(1).Trim().Trim('"').Trim("'")
+            if ($reference -match '(?i)(?:^|[\\/])RTK\.md$') {
+                $references.Add($trimmed)
+            }
+        }
+    }
+    catch {
+        Write-Verbose "Could not inspect Codex AGENTS.md for RTK instructions: $($_.Exception.Message)"
+    }
+    return $references.ToArray()
 }
 
 function Test-IsRtkHookRegistration {
@@ -237,7 +404,8 @@ if ($null -eq $sourceRegistration) {
 }
 
 $sourceHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $sourceHook).Hash
-$resolvedRtkPath = Resolve-ValidatedRtkPath $RtkPath
+$rtkResolution = Resolve-ValidatedRtk $RtkPath
+$resolvedRtkPath = $rtkResolution.Path
 
 $targetRoot = Get-NormalizedFullPath $CodexHome
 $volumeRoot = [IO.Path]::GetPathRoot($targetRoot).TrimEnd([IO.Path]::DirectorySeparatorChar)
@@ -248,9 +416,11 @@ if ($targetRoot -eq $volumeRoot) {
 $targetHooksDir = Get-NormalizedFullPath (Join-Path $targetRoot 'hooks')
 $targetHook = [IO.Path]::GetFullPath((Join-Path $targetHooksDir 'rtk-codex-hook.ps1'))
 $targetHooksJson = [IO.Path]::GetFullPath((Join-Path $targetRoot 'hooks.json'))
+$targetAgents = [IO.Path]::GetFullPath((Join-Path $targetRoot 'AGENTS.md'))
 Assert-ContainedPath $targetRoot $targetHooksDir
 Assert-ContainedPath $targetRoot $targetHook
 Assert-ContainedPath $targetRoot $targetHooksJson
+Assert-ContainedPath $targetRoot $targetAgents
 
 if ([IO.File]::Exists($targetHooksJson)) {
     $targetConfig = [IO.File]::ReadAllText($targetHooksJson) | ConvertFrom-Json -AsHashtable
@@ -267,12 +437,19 @@ $potentialConflicts = @(Get-PotentialBashHookConflicts $targetConfig)
 foreach ($conflict in $potentialConflicts) {
     Write-Warning "Another PreToolUse command Hook may match Bash and compete for updatedInput: $conflict"
 }
+foreach ($reference in @(Get-RtkInstructionReferences $targetAgents)) {
+    Write-Warning "Codex AGENTS.md references RTK.md and may make the model prefix commands before this transparent Hook can classify them. Remove the reference when using this Hook; the installer will not modify it: $reference"
+}
 
 $escapedTargetHook = $targetHook.Replace("'", "''")
 $escapedRtkPath = $resolvedRtkPath.Replace("'", "''")
+$registrationCommand = "& '$escapedTargetHook'"
+if ($rtkResolution.Invocation -eq 'Absolute') {
+    $registrationCommand += " -RtkPath '$escapedRtkPath'"
+}
 $registration = [ordered]@{
     type = 'command'
-    command = "& '$escapedTargetHook' -RtkPath '$escapedRtkPath'"
+    command = $registrationCommand
     timeout = $sourceRegistration['timeout']
     statusMessage = $sourceRegistration['statusMessage']
 }
@@ -283,7 +460,9 @@ $mergedJson | ConvertFrom-Json | Out-Null
 if (-not $PSCmdlet.ShouldProcess($targetRoot, 'Install RTK Codex Hook and merge hooks.json')) {
     Write-Host "Would install Hook: $targetHook"
     Write-Host "Would merge config: $targetHooksJson"
-    Write-Host "Would bind RTK: $resolvedRtkPath"
+    Write-Host "Would use RTK: $resolvedRtkPath"
+    Write-Host "Would discover RTK via: $($rtkResolution.Source)"
+    Write-Host "Would emit RTK command as: $(if ($rtkResolution.Invocation -eq 'Bare') { 'rtk' } else { "& '$escapedRtkPath'" })"
     return
 }
 
@@ -375,6 +554,8 @@ Write-Host 'RTK Codex Hook installed.'
 Write-Host "  Hook:    $targetHook"
 Write-Host "  Config:  $targetHooksJson"
 Write-Host "  RTK:     $resolvedRtkPath"
+Write-Host "  Source:  $($rtkResolution.Source)"
+Write-Host "  Command: $(if ($rtkResolution.Invocation -eq 'Bare') { 'rtk' } else { "& '$escapedRtkPath'" })"
 Write-Host "  SHA-256: $targetHash"
 if ($hookExisted -or $configExisted) {
     Write-Host "  Backup:  $backupDir"

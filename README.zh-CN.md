@@ -32,13 +32,15 @@ Linux、macOS、WSL 和其他 Agent 的通用方案应该最终进入 RTK 上游
 .\install.cmd -WhatIf
 ```
 
-使用 `PATH` 中当前的 `rtk.exe`：
+使用自动 RTK 探测：
 
 ```powershell
 .\install.cmd
 ```
 
-或者由用户显式提供 RTK 路径：
+不传 `-RtkPath` 时，安装器先按 PowerShell 的实际执行顺序检查名为 `rtk` 的应用程序。若 `PATH` 中排在第一位的有效命令兼容，就保留裸 `rtk` 调用；若 `PATH` 中没有兼容 RTK，则先检查有限的 Cargo 位置，再检查有限的 Scoop 位置，并用验证后的兜底绝对路径绑定。安装器不会递归扫描磁盘，也不会修改 `PATH`。
+
+也可以由用户显式提供 RTK 绝对路径：
 
 ```powershell
 .\install.cmd -RtkPath 'C:\Tools\rtk.exe'
@@ -48,7 +50,9 @@ Linux、macOS、WSL 和其他 Agent 的通用方案应该最终进入 RTK 上游
 
 安装器不会修改 `%APPDATA%\rtk\config.toml` 或其他 RTK 配置。RTK 中可选的 `exclude_commands = ["cat", "head", "tail"]` 可以保护其他集成，但本 Hook 自身不依赖它，读取边界由 AST Planner 和返回结果校验独立保证。
 
-安装完成后重启 Codex。此后模型发出的原始 `git status` 应该被改写为安装时绑定的那个 RTK 绝对路径，而不是运行时重新从 `PATH` 猜测。
+透明 Hook 会取代 RTK 旧有的“Always prefix shell commands with rtk”指令式集成。如果 `~/.codex/AGENTS.md` 引用了 `RTK.md`，应在重启 Codex 前移除这条引用，让 Hook 收到模型生成的原始命令。安装器会对直接引用发出警告，但绝不会修改 `AGENTS.md` 或 `RTK.md`。
+
+安装完成后重启 Codex。普通 `PATH` 模式下，模型发出的原始 `git status` 应改写为 `rtk git status`；显式路径、PATH 冲突或 Cargo/Scoop 兜底模式则使用 PowerShell call operator 加验证后的绝对路径。
 
 可以通过 `-CodexHome <目录>` 安装到隔离环境。安装器拒绝把卷根目录当作 Codex home。
 
@@ -80,10 +84,10 @@ Hook 先用 PowerShell 官方 AST 解析器理解命令，然后把每个符合�
 
 ```powershell
 git status; cargo check
-# -> & 'C:\resolved\rtk.exe' git status; & 'C:\resolved\rtk.exe' cargo check
+# -> rtk git status; rtk cargo check
 
 Get-Content Cargo.toml | Select-String workspace
-# -> & 'C:\resolved\rtk.exe' rg -n -i -e 'workspace' -- 'Cargo.toml'
+# -> rtk rg -n -i -e 'workspace' -- 'Cargo.toml'
 
 Get-ChildItem src -File | Select-Object Name,Length | Format-Table
 # -> 保持原样；这是 PowerShell 对象管道，而且不会白启动一次 RTK
@@ -92,7 +96,9 @@ Get-Content -Raw Cargo.toml
 # -> 保持原样；普通读取不进入自动 RTK 改写面
 ```
 
-RTK 自动生成的 `rtk read` 会按槽位拒绝；用户明确写出的 `rtk read` 保留。
+RTK 自动生成的 `rtk read` 会按槽位拒绝；用户明确写出的 `rtk read` 保留。绝对路径绑定模式会在最终输出边界统一处理输入中原本就存在的静态 `rtk` 与 `rtk.exe` 命令，这些已加前缀的独立命令不会再送入 registry 做一次无意义 rewrite。
+
+示例展示默认的裸 `PATH` 模式；显式或兜底绝对路径安装会把每个生成的 `rtk` 替换为 `& '<已验证绝对路径>'`。
 
 Planner 是确定且无状态的：它不持久化命令文本、rewrite 结果或对象管道分类，也不会根据一次推测性的 RTK 返回结果“学习”未来改写。
 

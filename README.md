@@ -42,13 +42,19 @@ Preview every target without writing:
 .\install.cmd -WhatIf
 ```
 
-Install using the `rtk.exe` currently on `PATH`:
+Install with automatic RTK discovery:
 
 ```powershell
 .\install.cmd
 ```
 
-Bind a specific RTK executable:
+Without `-RtkPath`, the installer first checks applications named `rtk` in
+PowerShell execution order. A compatible effective `PATH` command stays a bare
+`rtk` invocation. If `PATH` has no compatible RTK, the installer checks bounded
+Cargo locations before bounded Scoop locations and binds the validated fallback
+by absolute path. It never recursively scans a drive or edits `PATH`.
+
+Bind a specific RTK executable by absolute path:
 
 ```powershell
 .\install.cmd -RtkPath 'C:\Tools\rtk.exe'
@@ -64,8 +70,16 @@ configuration. An optional RTK `exclude_commands = ["cat", "head", "tail"]`
 setting can protect other integrations, but this Hook enforces its read boundary
 independently.
 
-Restart Codex after installation. A raw `git status` tool call should be
-rewritten to the exact RTK path selected during installation.
+The transparent Hook replaces RTK's instruction-only `Always prefix shell
+commands with rtk` integration. If `~/.codex/AGENTS.md` includes `RTK.md`,
+remove that include before restarting Codex so the Hook receives the original
+command. The installer warns about a direct include but never edits `AGENTS.md`
+or `RTK.md`.
+
+Restart Codex after installation. With the normal `PATH` mode, a raw
+`git status` tool call should become `rtk git status`. Explicit, collision, and
+fallback installations use PowerShell's call operator with the validated
+absolute path instead.
 
 Use `-CodexHome <absolute-or-relative-directory>` to install into a disposable
 or non-default Codex home. Volume roots are rejected.
@@ -108,10 +122,10 @@ Examples:
 
 ```powershell
 git status; cargo check
-# -> & 'C:\resolved\rtk.exe' git status; & 'C:\resolved\rtk.exe' cargo check
+# -> rtk git status; rtk cargo check
 
 Get-Content Cargo.toml | Select-String workspace
-# -> & 'C:\resolved\rtk.exe' rg -n -i -e 'workspace' -- 'Cargo.toml'
+# -> rtk rg -n -i -e 'workspace' -- 'Cargo.toml'
 
 Get-ChildItem src -File | Select-Object Name,Length | Format-Table
 # -> preserved; object semantics stay in PowerShell and RTK is not started
@@ -121,7 +135,14 @@ Get-Content -Raw Cargo.toml
 ```
 
 Generated `rtk read` candidates are rejected per slot. Explicit user-authored
-`rtk read` commands remain available.
+`rtk read` commands remain available. In an absolute-bound installation, one
+final AST pass also qualifies static `rtk` and `rtk.exe` commands that were
+already present in the input; those commands do not need another registry
+rewrite attempt.
+
+The examples show the default bare `PATH` mode. An explicit or fallback-bound
+installation replaces each generated `rtk` command with
+`& '<validated-absolute-path>'`.
 
 The planner is deterministic and stateless. It does not persist command text,
 rewrite outcomes, or object-pipeline classifications, and it does not learn

@@ -95,6 +95,10 @@ Any RTK-generated candidate containing `rtk read` MUST be rejected per slot.
 An explicit user-authored `rtk read` MUST remain available and MUST not prevent
 other slots in a mixed command from being rewritten.
 
+An already-prefixed standalone `rtk` or `rtk.exe` command MUST be preserved
+from registry delegation. Absolute binding MAY qualify its executable token at
+the final output boundary without changing its RTK subcommand or arguments.
+
 ## 8. RTK Invocation Plan
 
 One Hook invocation MUST start RTK at most once:
@@ -119,16 +123,36 @@ semicolon splitting. Invalid marker structure rejects all delegate results;
 generated `rtk read` rejects only its own slot. Batches over `1 MiB` MUST not
 start RTK.
 
-## 9. Exact RTK Binding
+## 9. RTK Resolution and Invocation
 
-Installation MUST resolve one absolute RTK file and validate both
-`--version` and `rewrite --help`. The Hook registration MUST pass that path as
-`-RtkPath`.
+An explicit `-RtkPath` MUST be absolute, MUST name an existing file, and MUST
+pass both `--version` and `rewrite --help`. It has highest priority and MUST be
+stored in the Hook registration.
 
-The configured path MUST be used for the `rewrite` subprocess and MUST replace
-every generated `rtk` command with PowerShell's call operator plus the same
-quoted absolute path. A missing configured file MUST fail open without falling
-back to a different RTK on `PATH`.
+Without `-RtkPath`, installation MUST enumerate `rtk` applications in
+PowerShell execution order. If the effective first candidate is compatible,
+the registration MUST omit `-RtkPath`, and both rewrite and generated commands
+MUST use bare `rtk`. If the effective candidate is incompatible but a later
+PATH candidate is compatible, installation MUST warn and bind the later file
+by absolute path.
+
+If PATH provides no compatible candidate, installation MUST inspect only these
+bounded fallback providers, in this order:
+
+1. Cargo: `%CARGO_HOME%\bin\rtk.exe`, then
+   `%USERPROFILE%\.cargo\bin\rtk.exe`;
+2. Scoop: configured and conventional Scoop roots, then `scoop prefix rtk`.
+
+Each fallback candidate MUST pass the same compatibility checks and MUST be
+bound by absolute path. The installer MUST NOT recursively scan a drive or edit
+the user's PATH.
+
+When `-RtkPath` is registered, that file MUST be used for the rewrite
+subprocess. One final AST binding pass MUST replace every statically resolvable
+`rtk` or `rtk.exe` executable token, whether generated or already present in
+the input, with PowerShell's call operator plus the same quoted absolute path.
+A missing configured file MUST fail open without falling back to PATH. In bare
+mode, a missing runtime `rtk` command MUST also fail open.
 
 `RTK_CODEX_RTK_EXE` MAY override the rewrite process only in `-LibraryMode` for
 isolated tests. Production execution MUST ignore it.
@@ -150,6 +174,11 @@ The installer and uninstaller MUST:
 They MUST NOT modify RTK configuration, including
 `%APPDATA%\rtk\config.toml`. An RTK `exclude_commands` setting MAY protect other
 integrations but MUST NOT be required for this Hook's read-boundary correctness.
+
+The installer SHOULD warn when `<CodexHome>\AGENTS.md` directly includes an
+`RTK.md` instruction file, because an `Always prefix` rule can hide the original
+command from the transparent planner. It MUST NOT modify `AGENTS.md` or
+`RTK.md`.
 
 The installer SHOULD warn when another `PreToolUse` command Hook may match
 `Bash`, because current Codex resolves competing `updatedInput` values by

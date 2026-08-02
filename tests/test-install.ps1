@@ -49,6 +49,48 @@ function Get-RtkRegistrations {
     return $registrations.ToArray()
 }
 
+function Copy-RtkFixture {
+    param(
+        [Parameter(Mandatory)][string]$Source,
+        [Parameter(Mandatory)][string]$Destination
+    )
+
+    [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($Destination)) | Out-Null
+    [IO.File]::Copy($Source, $Destination, $true)
+    $sourceShim = [IO.Path]::ChangeExtension($Source, '.shim')
+    if ([IO.File]::Exists($sourceShim)) {
+        [IO.File]::Copy($sourceShim, [IO.Path]::ChangeExtension($Destination, '.shim'), $true)
+    }
+}
+
+function Remove-RtkDirectoriesFromPath {
+    param([Parameter(Mandatory)][string]$PathValue)
+
+    $rtkDirectories = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    foreach ($command in @(Get-Command rtk -All -CommandType Application -ErrorAction SilentlyContinue)) {
+        $null = $rtkDirectories.Add([IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($command.Source)))
+    }
+
+    $retained = [Collections.Generic.List[string]]::new()
+    foreach ($entry in @($PathValue -split ';')) {
+        if ([string]::IsNullOrWhiteSpace($entry)) {
+            continue
+        }
+        $candidate = $entry.Trim().Trim('"')
+        try {
+            $resolved = [IO.Path]::GetFullPath($candidate).TrimEnd('\')
+        }
+        catch {
+            $retained.Add($entry)
+            continue
+        }
+        if (-not $rtkDirectories.Contains($resolved)) {
+            $retained.Add($entry)
+        }
+    }
+    return $retained -join ';'
+}
+
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $installerPath = Join-Path $projectRoot 'install.ps1'
 $uninstallerPath = Join-Path $projectRoot 'uninstall.ps1'
@@ -59,12 +101,17 @@ $fixturesRoot = [IO.Path]::GetFullPath((Join-Path ([IO.Path]::GetTempPath()) ('r
 $caseRoot = [IO.Path]::GetFullPath((Join-Path $fixturesRoot ('case-' + [Guid]::NewGuid().ToString('N'))))
 $dryRunRoot = [IO.Path]::GetFullPath((Join-Path $fixturesRoot ('dry-' + [Guid]::NewGuid().ToString('N'))))
 $invalidRoot = [IO.Path]::GetFullPath((Join-Path $fixturesRoot ('invalid-' + [Guid]::NewGuid().ToString('N'))))
-if (
-    -not $caseRoot.StartsWith($fixturesRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase) -or
-    -not $dryRunRoot.StartsWith($fixturesRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase) -or
-    -not $invalidRoot.StartsWith($fixturesRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)
-) {
-    throw 'Installer test paths escaped the fixture root.'
+$pathCaseRoot = [IO.Path]::GetFullPath((Join-Path $fixturesRoot ('path-' + [Guid]::NewGuid().ToString('N'))))
+$cargoCaseRoot = [IO.Path]::GetFullPath((Join-Path $fixturesRoot ('cargo-' + [Guid]::NewGuid().ToString('N'))))
+$scoopCaseRoot = [IO.Path]::GetFullPath((Join-Path $fixturesRoot ('scoop-' + [Guid]::NewGuid().ToString('N'))))
+$collisionCaseRoot = [IO.Path]::GetFullPath((Join-Path $fixturesRoot ('collision-' + [Guid]::NewGuid().ToString('N'))))
+foreach ($testPath in @(
+    $caseRoot, $dryRunRoot, $invalidRoot, $pathCaseRoot,
+    $cargoCaseRoot, $scoopCaseRoot, $collisionCaseRoot
+)) {
+    if (-not $testPath.StartsWith($fixturesRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Installer test path escaped the fixture root: $testPath"
+    }
 }
 
 try {
@@ -100,6 +147,9 @@ try {
         ($existingConfig | ConvertTo-Json -Depth 20),
         [Text.UTF8Encoding]::new($false)
     )
+    $agentsPath = Join-Path $caseRoot 'AGENTS.md'
+    $agentsSource = '@C:\Users\example\.codex\RTK.md' + [Environment]::NewLine
+    [IO.File]::WriteAllText($agentsPath, $agentsSource, [Text.UTF8Encoding]::new($false))
 
     & $installerPath -CodexHome $dryRunRoot -RtkPath $rtkPath -WhatIf
     Assert-True 'WhatIf does not create Codex home' (-not [IO.Directory]::Exists($dryRunRoot))
@@ -161,12 +211,87 @@ try {
     Assert-True 'Installer writes absolute target path' $installedJson.Contains($targetHook.Replace('\', '\\'))
     Assert-True 'Installer binds absolute RTK path' $installedJson.Contains($rtkPath.Replace('\', '\\'))
     Assert-True 'Installer warns about competing Bash Hook' (($installWarnings -join "`n").Contains('existing-hook'))
+    Assert-True 'Installer warns about RTK instruction overlap' (($installWarnings -join "`n").Contains('AGENTS.md references RTK.md'))
+    Assert-Equal 'Installer does not modify AGENTS.md' ([IO.File]::ReadAllText($agentsPath)) $agentsSource
 
     & $installerPath -CodexHome $caseRoot -RtkPath $rtkPath -Confirm:$false
     $reinstalledConfig = [IO.File]::ReadAllText($targetConfigPath) | ConvertFrom-Json -AsHashtable
     Assert-Equal 'Reinstall remains idempotent' @(Get-RtkRegistrations $reinstalledConfig).Count 1
     $backupFiles = @(Get-ChildItem -LiteralPath (Join-Path $caseRoot 'backups\rtk-codex-hook') -Recurse -File)
     Assert-True 'Reinstall creates Hook and config backups' ($backupFiles.Count -ge 2)
+
+    & $installerPath -CodexHome $pathCaseRoot -Confirm:$false
+    $pathConfigPath = Join-Path $pathCaseRoot 'hooks.json'
+    $pathConfig = [IO.File]::ReadAllText($pathConfigPath) | ConvertFrom-Json -AsHashtable
+    $pathRegistration = @(Get-RtkRegistrations $pathConfig)[0]
+    Assert-True 'PATH install omits explicit RTK binding' (-not ([string]$pathRegistration['command']).Contains('-RtkPath'))
+    Assert-True 'PATH install still writes absolute Hook path' ([string]$pathRegistration['command'] -match [regex]::Escape((Join-Path $pathCaseRoot 'hooks\rtk-codex-hook.ps1')))
+
+    & $installerPath -CodexHome $pathCaseRoot -RtkPath $rtkPath -Confirm:$false
+    $strictConfig = [IO.File]::ReadAllText($pathConfigPath) | ConvertFrom-Json -AsHashtable
+    $strictRegistration = @(Get-RtkRegistrations $strictConfig)[0]
+    Assert-True 'Explicit reinstall enables absolute RTK binding' ([string]$strictRegistration['command'] -match '-RtkPath')
+    Assert-True 'Explicit reinstall records selected RTK path' ([string]$strictRegistration['command'] -match [regex]::Escape($rtkPath))
+
+    & $installerPath -CodexHome $pathCaseRoot -Confirm:$false
+    $restoredPathConfig = [IO.File]::ReadAllText($pathConfigPath) | ConvertFrom-Json -AsHashtable
+    $restoredPathRegistration = @(Get-RtkRegistrations $restoredPathConfig)[0]
+    Assert-True 'PATH reinstall removes stale absolute RTK binding' (-not ([string]$restoredPathRegistration['command']).Contains('-RtkPath'))
+
+    $savedPath = $env:PATH
+    $savedCargoHome = $env:CARGO_HOME
+    $savedScoop = $env:SCOOP
+    $savedUserProfile = $env:USERPROFILE
+    try {
+        $pathWithoutRtk = Remove-RtkDirectoriesFromPath $savedPath
+        $isolatedUser = Join-Path $fixturesRoot 'isolated-user'
+        $cargoHome = Join-Path $fixturesRoot 'cargo-home'
+        $scoopRoot = Join-Path $fixturesRoot 'scoop-root'
+        $cargoRtk = Join-Path $cargoHome 'bin\rtk.exe'
+        $scoopRtk = Join-Path $scoopRoot 'shims\rtk.exe'
+        Copy-RtkFixture $rtkPath $cargoRtk
+        Copy-RtkFixture $rtkPath $scoopRtk
+
+        $env:PATH = $pathWithoutRtk
+        $env:CARGO_HOME = $cargoHome
+        $env:SCOOP = $scoopRoot
+        $env:USERPROFILE = $isolatedUser
+        & $installerPath -CodexHome $cargoCaseRoot -Confirm:$false
+        $cargoConfig = [IO.File]::ReadAllText((Join-Path $cargoCaseRoot 'hooks.json')) | ConvertFrom-Json -AsHashtable
+        $cargoRegistration = @(Get-RtkRegistrations $cargoConfig)[0]
+        Assert-True 'Cargo fallback binds absolute RTK path' ([string]$cargoRegistration['command'] -match [regex]::Escape($cargoRtk))
+        Assert-True 'Cargo fallback takes priority over Scoop' (-not ([string]$cargoRegistration['command'] -match [regex]::Escape($scoopRtk)))
+
+        $emptyCargoHome = Join-Path $fixturesRoot 'empty-cargo-home'
+        [IO.Directory]::CreateDirectory($emptyCargoHome) | Out-Null
+        $env:CARGO_HOME = $emptyCargoHome
+        & $installerPath -CodexHome $scoopCaseRoot -Confirm:$false
+        $scoopConfig = [IO.File]::ReadAllText((Join-Path $scoopCaseRoot 'hooks.json')) | ConvertFrom-Json -AsHashtable
+        $scoopRegistration = @(Get-RtkRegistrations $scoopConfig)[0]
+        Assert-True 'Scoop fallback binds absolute RTK path' ([string]$scoopRegistration['command'] -match [regex]::Escape($scoopRtk))
+
+        $wrongDirectory = Join-Path $fixturesRoot 'wrong-path'
+        $validDirectory = Join-Path $fixturesRoot 'valid-path'
+        [IO.Directory]::CreateDirectory($wrongDirectory) | Out-Null
+        [IO.File]::Copy((Join-Path $env:SystemRoot 'System32\where.exe'), (Join-Path $wrongDirectory 'rtk.exe'), $true)
+        $validRtk = Join-Path $validDirectory 'rtk.exe'
+        Copy-RtkFixture $rtkPath $validRtk
+        $env:PATH = "$wrongDirectory;$validDirectory;$pathWithoutRtk"
+        $env:CARGO_HOME = $emptyCargoHome
+        $env:SCOOP = Join-Path $fixturesRoot 'missing-scoop'
+        $collisionWarnings = @()
+        & $installerPath -CodexHome $collisionCaseRoot -Confirm:$false -WarningVariable collisionWarnings
+        $collisionConfig = [IO.File]::ReadAllText((Join-Path $collisionCaseRoot 'hooks.json')) | ConvertFrom-Json -AsHashtable
+        $collisionRegistration = @(Get-RtkRegistrations $collisionConfig)[0]
+        Assert-True 'PATH collision binds the later valid RTK path' ([string]$collisionRegistration['command'] -match [regex]::Escape($validRtk))
+        Assert-True 'PATH collision warns about the effective invalid command' (($collisionWarnings -join "`n").Contains('effective PATH command'))
+    }
+    finally {
+        $env:PATH = $savedPath
+        $env:CARGO_HOME = $savedCargoHome
+        $env:SCOOP = $savedScoop
+        $env:USERPROFILE = $savedUserProfile
+    }
 
     & $uninstallerPath -CodexHome $caseRoot -WhatIf
     Assert-True 'Uninstall WhatIf keeps Hook' ([IO.File]::Exists($targetHook))

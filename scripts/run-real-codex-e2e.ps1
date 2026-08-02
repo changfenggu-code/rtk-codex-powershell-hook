@@ -89,6 +89,7 @@ if (-not [IO.Directory]::Exists($workingRoot)) {
 
 $codex = Get-Command codex -ErrorAction Stop | Select-Object -First 1
 $node = Get-Command node.exe, node -ErrorAction Stop | Select-Object -First 1
+$strictRtkBinding = -not [string]::IsNullOrWhiteSpace($RtkPath)
 if ([string]::IsNullOrWhiteSpace($RtkPath)) {
     $rtk = Get-Command rtk.exe, rtk -ErrorAction Stop | Select-Object -First 1
     $RtkPath = $rtk.Source
@@ -159,7 +160,14 @@ memories = false
         [Text.UTF8Encoding]::new($false)
     )
 
-    & (Join-Path $projectRoot 'install.ps1') -CodexHome $temporaryRoot -RtkPath $resolvedRtkPath -Confirm:$false
+    $installParameters = @{
+        CodexHome = $temporaryRoot
+        Confirm = $false
+    }
+    if ($strictRtkBinding) {
+        $installParameters['RtkPath'] = $resolvedRtkPath
+    }
+    & (Join-Path $projectRoot 'install.ps1') @installParameters
 
     $observerOutput = Join-Path $temporaryRoot 'observed-input.json'
     $observerScript = Join-Path $temporaryRoot 'observe-pre-tool-use.ps1'
@@ -193,8 +201,13 @@ memories = false
 
     $env:CODEX_HOME = $temporaryRoot
     $prompt = 'Local release integration test. Follow the deterministic tool call returned by the loopback provider.'
-    $escapedRtkPath = $resolvedRtkPath.Replace("'", "''")
-    $expectedCommand = "& '$escapedRtkPath' git status --short"
+    $expectedCommand = if ($strictRtkBinding) {
+        $escapedRtkPath = $resolvedRtkPath.Replace("'", "''")
+        "& '$escapedRtkPath' git status --short"
+    }
+    else {
+        'rtk git status --short'
+    }
     $policyResult = Invoke-CodexLoopbackCase `
         -Name 'policy' `
         -CodexPath $codex.Source `
@@ -256,6 +269,7 @@ memories = false
         PowerShell = $PSVersionTable.PSVersion.ToString()
         Codex = (& $codex.Source --version) -join ' '
         Rtk = (& $resolvedRtkPath --version) -join ' '
+        RtkInvocation = if ($strictRtkBinding) { 'Absolute' } else { 'Bare' }
         Provider = $serverInfo.baseUrl
         ProviderScope = 'loopback-only'
         RawCommand = 'git status --short'

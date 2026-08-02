@@ -137,6 +137,7 @@ Assert-Rewrite 'Compound pipeline chain' "Get-Content 'a.rs' && Get-ChildItem 's
 Assert-Unchanged 'Head remains native' "head -10 'Cargo.toml'"
 Assert-Unchanged 'Tail remains native' "tail -10 'Cargo.toml'"
 Assert-Rewrite 'Compound native rewrite excludes read' "git status; head -10 'Cargo.toml'" "rtk git status; head -10 'Cargo.toml'"
+Assert-Rewrite 'Compound native rewrite preserves cat' "git status; cat 'Cargo.toml'" "rtk git status; cat 'Cargo.toml'"
 Assert-Rewrite 'Batch two native commands' 'git status; cargo check -p btleplus' 'rtk git status; rtk cargo check -p btleplus'
 Assert-Rewrite 'Batch delegates around preserved read' "git status; head -10 'Cargo.toml'; cargo check" "rtk git status; head -10 'Cargo.toml'; rtk cargo check"
 Assert-Rewrite 'Batch delegates around local rewrite' "git status; Select-String -Path 'Cargo.toml' -Pattern 'workspace'; cargo check" "rtk git status; rtk rg -n -i -e 'workspace' -- 'Cargo.toml'; rtk cargo check"
@@ -160,7 +161,10 @@ $nativeCat = Invoke-RtkRewrite 'cat Cargo.toml'
 Assert-Equal 'RTK excludes cat' $nativeCat $null
 Assert-Equal 'RTK excludes head' (Invoke-RtkRewrite 'head -10 Cargo.toml') $null
 Assert-Equal 'RTK excludes tail' (Invoke-RtkRewrite 'tail -10 Cargo.toml') $null
-Assert-Equal 'RTK partially rewrites compound command' (Invoke-RtkRewrite 'git status; cat Cargo.toml') 'rtk git status; cat Cargo.toml'
+$nativeCompound = Invoke-RtkRewrite 'git status; cat Cargo.toml'
+Assert-True 'RTK compound result never imports generated read' (
+    $null -eq $nativeCompound -or -not (Test-ContainsRtkReadCommand $nativeCompound)
+)
 Assert-Equal 'Explicit rtk read remains unchanged' (Invoke-RtkRewrite 'rtk read Cargo.toml -l minimal') $null
 Assert-True 'Generated rtk read detector accepts read' (Test-ContainsRtkReadCommand 'rtk read Cargo.toml --max-lines 10')
 Assert-True 'Generated rtk read detector rejects other commands' (-not (Test-ContainsRtkReadCommand 'rtk rg workspace Cargo.toml'))
@@ -268,6 +272,15 @@ Assert-Equal 'Configured handler invocation exits zero' $LASTEXITCODE 0
 $configuredJson = $configuredOutput | ConvertFrom-Json
 Assert-Equal 'Configured handler invocation rewrites' $configuredJson.hookSpecificOutput.updatedInput.command "rtk ls 'src'"
 
+$pathNativeOutput = New-TestPayload 'git status' |
+    & pwsh -NoLogo -NoProfile -NonInteractive -File $hookPath
+$pathNativeJson = $pathNativeOutput | ConvertFrom-Json
+Assert-Equal 'Production PATH mode emits bare RTK command' $pathNativeJson.hookSpecificOutput.updatedInput.command 'rtk git status'
+
+$pathPrefixedOutput = New-TestPayload 'rtk cat README.md' |
+    & pwsh -NoLogo -NoProfile -NonInteractive -File $hookPath
+Assert-Equal 'Production PATH mode leaves prefixed RTK command unchanged' ($pathPrefixedOutput -join '') ''
+
 $missingBoundRtk = Join-Path $testRoot 'missing bound rtk.exe'
 $missingBoundLocalOutput = New-TestPayload "Select-String -Path 'Cargo.toml' -Pattern 'workspace'" |
     & pwsh -NoLogo -NoProfile -NonInteractive -File $hookPath -RtkPath $missingBoundRtk
@@ -345,6 +358,12 @@ try {
     Assert-Equal 'PowerShell cmdlet RTK invocation count' (Get-FakeRtkInvocationCount) 0
 
     Reset-FakeRtkInvocation
+    Assert-Unchanged 'Prefixed RTK cat skips registry rewrite' 'rtk cat README.md'
+    Assert-Unchanged 'Prefixed RTK git skips registry rewrite' 'rtk git status'
+    Assert-Unchanged 'Explicit RTK read skips registry rewrite' 'rtk read README.md'
+    Assert-Equal 'Prefixed RTK commands use zero registry invocations' (Get-FakeRtkInvocationCount) 0
+
+    Reset-FakeRtkInvocation
     Assert-Rewrite 'Single delegate uses direct RTK invocation' 'git status' 'rtk git status'
     Assert-Equal 'Single delegate RTK invocation count' (Get-FakeRtkInvocationCount) 1
     Assert-True 'Single delegate omits batch markers' (-not [System.IO.File]::ReadAllText($fakeInputPath).Contains('codexrtkbatch_'))
@@ -380,6 +399,26 @@ try {
     $boundJson = $boundOutput | ConvertFrom-Json
     $escapedFakeRtkPath = $fakeRtkPath.Replace("'", "''")
     Assert-Equal 'Bound RTK path qualifies generated command' $boundJson.hookSpecificOutput.updatedInput.command "& '$escapedFakeRtkPath' git status"
+
+    Reset-FakeRtkInvocation
+    $prefixedBoundSource = 'rtk cat README.md; rtk git status; rtk read README.md'
+    $prefixedBoundOutput = New-TestPayload $prefixedBoundSource |
+        & pwsh -NoLogo -NoProfile -NonInteractive -File $hookPath -RtkPath $fakeRtkPath
+    Assert-Equal 'Bound prefixed RTK subprocess exits zero' $LASTEXITCODE 0
+    $prefixedBoundJson = $prefixedBoundOutput | ConvertFrom-Json
+    $prefixedBoundExpected = "& '$escapedFakeRtkPath' cat README.md; & '$escapedFakeRtkPath' git status; & '$escapedFakeRtkPath' read README.md"
+    Assert-Equal 'Absolute mode qualifies prefixed cat git and read' $prefixedBoundJson.hookSpecificOutput.updatedInput.command $prefixedBoundExpected
+    Assert-Equal 'Absolute prefixed commands skip registry rewrite' (Get-FakeRtkInvocationCount) 0
+
+    Reset-FakeRtkInvocation
+    $mixedBoundSource = 'rtk cat README.md; git status; rtk read README.md'
+    $mixedBoundOutput = New-TestPayload $mixedBoundSource |
+        & pwsh -NoLogo -NoProfile -NonInteractive -File $hookPath -RtkPath $fakeRtkPath
+    Assert-Equal 'Bound mixed RTK subprocess exits zero' $LASTEXITCODE 0
+    $mixedBoundJson = $mixedBoundOutput | ConvertFrom-Json
+    $mixedBoundExpected = "& '$escapedFakeRtkPath' cat README.md; & '$escapedFakeRtkPath' git status; & '$escapedFakeRtkPath' read README.md"
+    Assert-Equal 'Absolute mode binds prefixed and generated RTK commands together' $mixedBoundJson.hookSpecificOutput.updatedInput.command $mixedBoundExpected
+    Assert-Equal 'Bound mixed command delegates only raw git' (Get-FakeRtkInvocationCount) 1
 
     Reset-FakeRtkInvocation
     $largePayload = 'x' * (512KB)

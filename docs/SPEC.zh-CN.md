@@ -84,6 +84,8 @@ git status; head -10 Cargo.toml; cargo check
 
 RTK 配置可以在 `[hooks].exclude_commands` 中包含 `cat`、`head` 和 `tail`，作为其他 RTK 集成的可选纵深保护。Codex Hook 的正确性不得依赖该配置：读取命令必须由 AST 计划保持原样，任何返回槽位中的 `rtk read` 候选也必须被拒绝。显式调用 `rtk read file -l minimal/aggressive` 不受影响。
 
+输入中已经带有 `rtk` 或 `rtk.exe` 前缀的独立命令不得再次交给 registry rewrite；绝对路径模式可以在最终输出边界只替换其静态可解析的可执行文件 token，不得改变 RTK 子命令或参数。用户明确写出的 `rtk read` 仍然可用。
+
 **黄色：有意保持原样**
 
 所有单纯文件读取：
@@ -336,7 +338,11 @@ RTK 全局配置的 `[hooks].exclude_commands` 可以包含 `cat`、`head` 和 `
 
 `hooks.json` 使用 PowerShell call operator 直接执行 `.ps1`，避免再启动一个 PowerShell 进程。如果 Codex session shell 改为 `cmd.exe` 或 Git Bash，注册命令必须改为显式的 `pwsh -NoLogo -NoProfile -NonInteractive -File ...`。
 
-安装器必须解析并验证一个 RTK 绝对路径，通过 `-RtkPath` 注入 Hook。该路径既要用于 `rtk rewrite` 子进程，也要替换生成命令中的 `rtk`，确保改写阶段与最终执行阶段使用同一个二进制。配置路径丢失时必须 fail-open，不得悄悄回退到 `PATH` 中的另一个 RTK。
+用户显式传入的 `-RtkPath` 必须是指向现有文件的绝对路径，并通过 `--version` 与 `rewrite --help` 验证；它拥有最高优先级，安装器必须把它写入 Hook 注册。未传入 `-RtkPath` 时，安装器必须按照 PowerShell 实际执行顺序枚举 `PATH` 中名为 `rtk` 的应用程序：第一候选兼容时不写 `-RtkPath`，rewrite 子进程与生成命令都使用裸 `rtk`；第一候选不兼容但后续候选兼容时，必须告警并用后续候选的绝对路径绑定。
+
+如果 `PATH` 没有兼容候选，安装器只允许按固定顺序检查有限兜底位置：先检查 `%CARGO_HOME%\bin\rtk.exe`，再检查 `%USERPROFILE%\.cargo\bin\rtk.exe`；仍未找到时，才检查已配置或约定的 Scoop 根目录以及 `scoop prefix rtk`。每个候选都必须通过相同的兼容性验证，并以绝对路径绑定。安装器不得递归扫描磁盘，也不得修改用户 `PATH`。
+
+注册了 `-RtkPath` 时，该文件既用于 `rtk rewrite` 子进程，也必须通过一次最终 AST 绑定替换所有静态可解析的 `rtk` 或 `rtk.exe` 可执行文件 token，无论它来自 Hook 生成结果还是原始输入；配置文件丢失时必须 fail-open，不得回退到 `PATH`。裸模式下运行时找不到 `rtk` 也必须 fail-open。
 
 当前 Codex 在多个匹配 Hook 都返回 `updatedInput` 时，选择实际完成得最晚的结果。安装器应该对其他可能匹配 `Bash` 的 command Hook 发出潜在冲突警告，但不得删除、重排或篡改它们。
 
@@ -375,10 +381,12 @@ pwsh -NoLogo -NoProfile -NonInteractive -File .\tests\run-all.ps1
 - 卷根目录、无效现有 JSON、无效源 Hook 或越界目标必须在任何目标写入前失败；
 - 安装前必须备份已有目标，临时文件必须与目标位于同一目录并在验证后替换；
 - 重复安装必须保持一个 RTK 注册，同时保留其他 matcher 和 Hook；
-- 安装前必须验证用户指定或 PATH 解析出的 RTK 绝对路径、`--version` 与 `rewrite --help`；
+- 安装前必须按“显式路径、PATH、Cargo、Scoop”的顺序解析 RTK，并验证候选文件、`--version` 与 `rewrite --help`；PATH 的有效第一候选使用裸命令，其他成功路径使用绝对绑定；
+- 安装器不得递归扫描磁盘或修改用户 `PATH`；
 - 卸载器只能删除本项目的注册项与 Hook 文件，并且必须保留其他 Hook；
 - `-WhatIf` 必须不创建目录或文件；生产安装器不得递归删除目录。
 - 安装器和卸载器不得修改 `%APPDATA%\rtk\config.toml` 或其他 RTK 配置；本 Hook 的正确性不得依赖 `exclude_commands`。
+- `<CodexHome>\AGENTS.md` 直接引用 `RTK.md` 时，安装器应该警告旧有的“Always prefix”软约束会遮蔽 Planner 所需的原始命令，但不得修改 `AGENTS.md` 或 `RTK.md`。
 
 仓库必须提供可复现的 read 评估器：隔离 RTK tracking 数据库、不修改 RTK 配置、不修改输入文件、支持结构化输出，并比较 default、minimal、aggressive、行窗口、尾部窗口和行号模式。耗时必须明确标注为机器相关数据，不得设置为 CI 阈值。
 
